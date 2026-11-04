@@ -3,7 +3,7 @@
 The unchanged main.py performs infrastructure Wi-Fi / OTA at boot; this app
 switches to the open BTS-TRACKING AP and accepts JSON lines over TCP.
 Each accepted record is appended to /sd/pending.jsonl before replying OK.
-No LCD or MQTT yet. No flash fallback: a failed SD write returns ERR sd.
+LCD status enabled; MQTT upload remains future work. No flash fallback: a failed SD write returns ERR sd.
 """
 import network
 import socket
@@ -13,6 +13,12 @@ import machine
 import os
 import config
 import sdcard
+
+try:
+    from lcd import StatusLCD
+except Exception as exc:
+    StatusLCD = None
+    print('LCD module unavailable:', exc)
 
 AP_SSID = "BTS-TRACKING"
 AP_IP = "192.168.4.1"
@@ -33,8 +39,20 @@ SD_BAUDRATE = getattr(config, "SD_BAUDRATE", 10_000_000)
 sd_ready = False
 sd_fault = None
 records_saved = 0
+lcd = None
+last_device = None
+last_cell = None
 _sd_spi = None
 _sd_device = None
+
+
+def show_status(state="RECEIVING"):
+    if lcd is None:
+        return
+    try:
+        lcd.render(sd_ready, records_saved, last_device, last_cell, state)
+    except Exception as exc:
+        print("LCD update error:", exc)
 
 
 def mount_sd():
@@ -63,11 +81,13 @@ def mount_sd():
             sd_fault = None
             print("SD mounted:", SD_MOUNT)
             print("MQTT pending queue:", QUEUE_PATH)
+            show_status("SD READY")
             return True
         except Exception as exc:
             sd_ready = False
             sd_fault = str(exc)
             print("SD ERROR (attempt {}): {}".format(attempt, sd_fault))
+            show_status("SD ERROR")
             try:
                 os.umount(SD_MOUNT)
             except OSError:
@@ -97,6 +117,7 @@ def save_record(record):
         sd_ready = False
         sd_fault = str(exc)
         print("SD ERROR (append):", sd_fault)
+        show_status("SD WRITE ERROR")
         # Deliberately do not acknowledge this record.
         return False
 
@@ -141,6 +162,7 @@ def parse_record(line):
 
 
 def handle_client(client, address):
+    global last_device, last_cell
     print("Connected:", address)
     client.settimeout(5)
     pending = b""
@@ -169,7 +191,13 @@ def handle_client(client, address):
                     client.send(b"ERR json\n")
                     continue
                 if save_record(record):
+                    last_device = record.get("device")
+                    last_cell = (
+                        str(record.get("mcc", "")) + str(record.get("mnc", "")),
+                        str(record.get("lac", "-")),
+                        str(record.get("cellid", "-")))
                     print("SD SAVED #{}: {}".format(records_saved, ujson.dumps(record)))
+                    show_status("RECEIVING")
                     client.send(b"OK\n")
                 else:
                     print("SD unavailable; record not acknowledged:", sd_fault)
@@ -184,7 +212,15 @@ def handle_client(client, address):
 
 
 def run():
+    global lcd
     led = machine.Pin("LED", machine.Pin.OUT)
+    if StatusLCD is not None:
+        try:
+            lcd = StatusLCD()
+            print("LCD initialized (ST7735 128x128)")
+        except Exception as exc:
+            lcd = None
+            print("LCD init failed:", exc)
     mount_sd()
     ap = start_ap()
     address = socket.getaddrinfo("0.0.0.0", LISTEN_PORT)[0][-1]
