@@ -77,7 +77,9 @@ def run():
     if not sim.start():
         print("SIM868 did not respond; retrying periodically")
 
-    next_wifi_attempt = 0
+    # Switch from the OTA infrastructure Wi-Fi to the receiver AP explicitly.
+    connect_receiver(wlan)
+    next_wifi_attempt = time.ticks_add(time.ticks_ms(), WIFI_RETRY_MS)
     interval_ms = max(1000, int(config.SAMPLE_SECONDS * 1000))
     while True:
         started = time.ticks_ms()
