@@ -13,6 +13,8 @@ import machine
 import os
 import config
 import sdcard
+import config_wifi
+import mqtt_upload
 
 try:
     from lcd import StatusLCD
@@ -26,6 +28,18 @@ LISTEN_PORT = 5000
 MAX_LINE_BYTES = 2048
 SD_MOUNT = "/sd"
 QUEUE_PATH = "/sd/pending.jsonl"
+POS_SLOT_A = "/sd/bts.pos.a"
+POS_SLOT_B = "/sd/bts.pos.b"
+MQTT_TOPIC_PREFIX = getattr(config_wifi, "BTS_MQTT_TOPIC_PREFIX", "bts")
+MQTT_HOST = getattr(config_wifi, "MQTT_HOST", None)
+MQTT_PORT = getattr(config_wifi, "MQTT_PORT", 1883)
+MQTT_USER = getattr(config_wifi, "MQTT_USER", None)
+MQTT_PASS = getattr(config_wifi, "MQTT_PASS", None)
+KEY0 = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)
+KEY2 = machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP)
+KEY3 = machine.Pin(3, machine.Pin.IN, machine.Pin.PULL_UP)
+# KEY1 GP17 is the SD-card CS pin: never initialize it as a key.
+
 
 # Standard SPI0 wiring for an SD module; override in local config.py.
 # NOTE: GP17 is also a button on some ST7735 LCD boards: do NOT share CS.
@@ -210,6 +224,196 @@ def handle_client(client, address):
         print("Disconnected:", address)
 
 
+def _key_pressed(pin):
+    # Active-low keys, debounced. A pressed-and-held key is detected too.
+    if pin.value() != 0:
+        return False
+    time.sleep_ms(35)
+    return pin.value() == 0
+
+
+def _request_during_upload():
+    if _key_pressed(KEY3):
+        return "SAFE"
+    if _key_pressed(KEY2):
+        return "RECEIVING"
+    return None
+
+
+def _cursor_checksum(value):
+    # Detect a torn/partial cursor write.
+    return (value ^ 0x5A5A5A5A) & 0xFFFFFFFF
+
+
+def _read_position(path, max_bytes):
+    try:
+        with open(path, "r") as f:
+            line = f.read(40).strip()
+        fields = line.split(":")
+        if len(fields) != 2:
+            return None
+        pos = int(fields[0])
+        if not 0 <= pos <= max_bytes:
+            return None
+        if int(fields[1], 16) != _cursor_checksum(pos):
+            return None
+        return pos
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _load_cursor(max_bytes):
+    a = _read_position(POS_SLOT_A, max_bytes)
+    b = _read_position(POS_SLOT_B, max_bytes)
+    if a is None and b is None:
+        return 0, POS_SLOT_A
+    if b is None or (a is not None and a >= b):
+        return a, POS_SLOT_B
+    return b, POS_SLOT_A
+
+
+def _commit_cursor(pos, next_slot):
+    # Two alternating slots: a torn write leaves the previous slot intact.
+    with open(next_slot, "w") as f:
+        f.write("{}:{:08x}\\n".format(pos, _cursor_checksum(pos)))
+        f.flush()
+    return POS_SLOT_B if next_slot == POS_SLOT_A else POS_SLOT_A
+
+
+def _stop_access_point(ap, server):
+    try:
+        server.close()
+    except OSError:
+        pass
+    ap.active(False)
+    print("Receiver AP stopped")
+
+
+def _connect_home_wifi():
+    sta = network.WLAN(network.STA_IF)
+    sta.active(True)
+    if sta.isconnected():
+        return sta, None
+    for attempt in range(2):
+        print("Home Wi-Fi attempt", attempt + 1)
+        try:
+            sta.connect(config_wifi.SSID, config_wifi.PASS)
+        except OSError as exc:
+            print("Wi-Fi connect error:", exc)
+        start = time.ticks_ms()
+        while time.ticks_diff(time.ticks_ms(), start) < 7000:
+            action = _request_during_upload()
+            if action:
+                return sta, action
+            if sta.isconnected():
+                print("Home Wi-Fi connected:", sta.ifconfig()[0])
+                return sta, None
+            time.sleep_ms(100)
+        try:
+            sta.disconnect()
+        except OSError:
+            pass
+    raise OSError("Home Wi-Fi unavailable")
+
+
+def _disconnect_home_wifi(sta):
+    if sta is None:
+        return
+    try:
+        sta.disconnect()
+    except OSError:
+        pass
+    sta.active(False)
+
+
+def _upload_pending(sta):
+    if not sd_ready:
+        raise OSError("SD unavailable")
+    if not MQTT_HOST:
+        raise ValueError("MQTT_HOST missing in local config_wifi.py")
+    size = os.stat(QUEUE_PATH)[6]
+    pos, next_slot = _load_cursor(size)
+    sent = 0
+    print("MQTT pending bytes:", size, "resume:", pos)
+    show_status("SENT: 0")
+    client_id = "bts-receiver-" + "".join("{:02x}".format(b) for b in machine.unique_id())
+    client = mqtt_upload.MQTTUploader(
+        MQTT_HOST, MQTT_PORT, client_id, MQTT_USER, MQTT_PASS)
+    try:
+        client.connect()
+        print("MQTT connected:", MQTT_HOST, MQTT_PORT)
+        with open(QUEUE_PATH, "rb") as f:
+            f.seek(pos)
+            while True:
+                action = _request_during_upload()
+                if action:
+                    return action, sent
+                line = f.readline()
+                if not line:
+                    show_status("SENT: {}".format(sent))
+                    print("Upload complete; records:", sent)
+                    return None, sent
+                new_pos = f.tell()
+                if not line.endswith(b"\\n"):
+                    raise ValueError("Incomplete JSONL record at {}".format(pos))
+                record = ujson.loads(line.decode('utf-8'))
+                if not isinstance(record, dict) or not record.get("device"):
+                    raise ValueError("Invalid JSONL record at {}".format(pos))
+                # Preserve sender identity and unchanged original record.
+                topic = "{}/{}/location".format(
+                    MQTT_TOPIC_PREFIX, record["device"])
+                client.publish(topic, line.decode("utf-8").strip())
+                next_slot = _commit_cursor(new_pos, next_slot)
+                pos = new_pos
+                sent += 1
+                show_status("SENT: {}".format(sent))
+                if sent % 20 == 0:
+                    print("MQTT uploaded:", sent, "cursor:", pos)
+    finally:
+        client.close()
+
+
+def _safe_shutdown(ap=None, server=None, sta=None):
+    global sd_ready
+    if server is not None:
+        try:
+            server.close()
+        except OSError:
+            pass
+    if ap is not None:
+        ap.active(False)
+    _disconnect_home_wifi(sta)
+    if sd_ready:
+        try:
+            os.umount(SD_MOUNT)
+            sd_ready = False
+            print("SD unmounted - safe to power off")
+        except OSError as exc:
+            print("SD unmount FAILED:", exc)
+            show_status("SD UNMOUNT ERR")
+            return False
+    show_status("SAFE TO OFF")
+    return True
+
+
+def _open_listener():
+    ap = start_ap()
+    address = socket.getaddrinfo("0.0.0.0", LISTEN_PORT)[0][-1]
+    server = socket.socket()
+    try:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(address)
+        server.listen(4)
+        server.settimeout(0.2)
+    except Exception:
+        server.close()
+        ap.active(False)
+        raise
+    print("Receiver listening on", AP_IP, "port", LISTEN_PORT)
+    show_status("RECEIVING")
+    return ap, server
+
+
 def run():
     global lcd
     led = machine.Pin("LED", machine.Pin.OUT)
@@ -221,16 +425,70 @@ def run():
             lcd = None
             print("LCD init failed:", exc)
     mount_sd()
-    ap = start_ap()
-    address = socket.getaddrinfo("0.0.0.0", LISTEN_PORT)[0][-1]
-    server = socket.socket()
-    try:
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(address)
-        server.listen(4)
-        server.settimeout(2)
-        print("Receiver listening on", AP_IP, "port", LISTEN_PORT)
-        while True:
+    ap, server = _open_listener()
+    sta = None
+    mode = "RECEIVING"
+    last_key = None
+
+    while True:
+        # Detect key-down edge, with release before the same key triggers again.
+        pressed = None
+        for name, pin in (("SAFE", KEY3), ("RECEIVING", KEY2), ("UPLOAD", KEY0)):
+            if pin.value() == 0:
+                pressed = name
+                break
+        if pressed != last_key and pressed is not None:
+            time.sleep_ms(35)
+            if (pressed == "SAFE" and KEY3.value() == 0 or
+                pressed == "RECEIVING" and KEY2.value() == 0 or
+                pressed == "UPLOAD" and KEY0.value() == 0):
+                if pressed == "SAFE":
+                    print("KEY3: safe power off")
+                    if mode == "RECEIVING":
+                        _stop_access_point(ap, server)
+                        ap, server = None, None
+                    if _safe_shutdown(ap, server, sta):
+                        mode = "SAFE"
+                    else:
+                        mode = "ERROR"
+                elif pressed == "RECEIVING" and mode != "RECEIVING":
+                    print("KEY2: resume receiving")
+                    _disconnect_home_wifi(sta)
+                    sta = None
+                    if not sd_ready:
+                        mount_sd()
+                    ap, server = _open_listener()
+                    mode = "RECEIVING"
+                elif pressed == "UPLOAD" and mode in ("RECEIVING", "UPLOADING"):
+                    print("KEY0: upload pending MQTT records")
+                    if mode == "RECEIVING":
+                        _stop_access_point(ap, server)
+                        ap, server = None, None
+                    mode = "UPLOADING"
+                    show_status("WIFI CONNECT")
+                    try:
+                        sta, action = _connect_home_wifi()
+                        if action is None:
+                            show_status("MQTT UPLOAD")
+                            action, sent = _upload_pending(sta)
+                        if action == "SAFE":
+                            if _safe_shutdown(sta=sta):
+                                mode = "SAFE"
+                            else:
+                                mode = "ERROR"
+                        elif action == "RECEIVING":
+                            _disconnect_home_wifi(sta)
+                            sta = None
+                            ap, server = _open_listener()
+                            mode = "RECEIVING"
+                        else:
+                            show_status("UPLOAD DONE")
+                    except Exception as exc:
+                        print("Upload error:", exc)
+                        show_status("UPLOAD ERROR")
+        last_key = pressed
+
+        if mode == "RECEIVING":
             try:
                 client, peer = server.accept()
             except OSError:
@@ -244,6 +502,5 @@ def run():
                     client.close()
                 except OSError:
                     pass
-    finally:
-        server.close()
-        ap.active(False)
+        else:
+            time.sleep_ms(100)

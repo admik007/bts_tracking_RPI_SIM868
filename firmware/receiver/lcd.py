@@ -202,9 +202,16 @@ class StatusLCD:
         lcd.fill(lcd.BLACK)
         lcd.text("BTS TRACKING", 4, 2, lcd.WHITE)
         lcd.hline(0, 13, 128, lcd.WHITE)
-        lcd.text("AP: 192.168.4.1", 2, 17, lcd.GBLUE)
-        lcd.text("SD: " + ("OK" if sd_ok else "ERROR"), 2, 30,
-                 lcd.GREEN if sd_ok else lcd.RED)
+        uploading = (state.startswith("SENT:") or
+                     state in ("WIFI CONNECT", "MQTT UPLOAD",
+                               "UPLOAD DONE", "UPLOAD ERROR"))
+        safe = state == "SAFE TO OFF"
+        lcd.text("WiFi: UPLOAD" if uploading else
+                 ("WiFi: OFF" if safe else "AP: 192.168.4.1"),
+                 2, 17, lcd.GBLUE)
+        sd_label = "OFF" if safe else ("OK" if sd_ok else "ERROR")
+        lcd.text("SD: " + sd_label, 2, 30,
+                 lcd.GREEN if (sd_ok or safe) else lcd.RED)
         lcd.text("Saved: {}".format(saved), 2, 43, lcd.WHITE)
         lcd.hline(0, 56, 128, lcd.WHITE)
         # Three fixed slots. Every sender is identified by its unique device ID
