@@ -15,8 +15,9 @@ accepted BTS JSON record to `/sd/pending.jsonl`.
 | SD CS | GP17 |
 
 Important: the **button originally wired to GP17 shares the SD CS pin**.
-This change does not initialize or read any buttons. Do not use button
-GP17 until its wiring is resolved. LCD display alone uses no SD GPIO.
+KEY1 / GP17 is never initialized or read because it is SD CS.
+KEY0 / GP15 starts upload, KEY2 / GP2 resumes receiving, and
+KEY3 / GP3 safely unmounts SD. LCD display itself uses no SD GPIO.
 
 ## Display
 
@@ -33,7 +34,7 @@ The display initializes before SD, so SD initialization errors are visible.
 
 After merging and `git pull` on the Apache host, the receiver OTA manifest
 updates `app.py`, `lcd.py` and `sdcard.py`. No changes to publisher or
-bootstrap `main.py`. This step does not implement keys or MQTT yet.
+bootstrap `main.py`. For keys and MQTT upload, see `UPLOAD.md`.
 
 Sender rows are assigned in order of first successfully stored message during
 this boot, and each device's row updates independently. Additional senders are
