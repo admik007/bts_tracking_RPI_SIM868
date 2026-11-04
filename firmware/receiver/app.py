@@ -40,8 +40,8 @@ sd_ready = False
 sd_fault = None
 records_saved = 0
 lcd = None
-last_device = None
-last_cell = None
+sender_cells = {}  # device -> (MCCMNC, CellID); insertion order determines LCD slots
+MAX_LCD_SENDERS = 3
 _sd_spi = None
 _sd_device = None
 
@@ -50,7 +50,7 @@ def show_status(state="RECEIVING"):
     if lcd is None:
         return
     try:
-        lcd.render(sd_ready, records_saved, last_device, last_cell, state)
+        lcd.render(sd_ready, records_saved, sender_cells, state)
     except Exception as exc:
         print("LCD update error:", exc)
 
@@ -162,7 +162,6 @@ def parse_record(line):
 
 
 def handle_client(client, address):
-    global last_device, last_cell
     print("Connected:", address)
     client.settimeout(5)
     pending = b""
@@ -191,11 +190,11 @@ def handle_client(client, address):
                     client.send(b"ERR json\n")
                     continue
                 if save_record(record):
-                    last_device = record.get("device")
-                    last_cell = (
-                        str(record.get("mcc", "")) + str(record.get("mnc", "")),
-                        str(record.get("lac", "-")),
-                        str(record.get("cellid", "-")))
+                    device = record.get("device")
+                    if device in sender_cells or len(sender_cells) < MAX_LCD_SENDERS:
+                        sender_cells[device] = (
+                            str(record.get("mcc", "")) + str(record.get("mnc", "")),
+                            str(record.get("cellid", "-")))
                     print("SD SAVED #{}: {}".format(records_saved, ujson.dumps(record)))
                     show_status("RECEIVING")
                     client.send(b"OK\n")
