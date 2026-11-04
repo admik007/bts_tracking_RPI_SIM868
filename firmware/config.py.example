@@ -1,14 +1,11 @@
 # Copy to config.py on each Pico (SIM868 hardware and sampling only).
-# Hardware: SIM868 on UART0, GP0=TX GP1=RX, PWRKEY GP14.
+# Hardware: SIM868 on UART0, GP0=TX GP1=RX, power enable GP14.
 MODEM_UART = 0
 MODEM_TX = 0
 MODEM_RX = 1
 MODEM_BAUD = 115200
-# SIM868 PWRKEY control depends on your breakout. Leave False initially.
-PULSE_PWRKEY_ON_BOOT = False
-PWRKEY_PIN = 14
-PWRKEY_ACTIVE_LEVEL = 0
-PWRKEY_PULSE_MS = 1200
+# Our tested SIM868 board powers on when GP14 is kept HIGH.
+POWER_ENABLE_PIN = 14
 SAMPLE_SECONDS = 5
 # Optional local MQTT will be implemented after transport decision.
 # In v1 records are printed as JSON to USB serial.
