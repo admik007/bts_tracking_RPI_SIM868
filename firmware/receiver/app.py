@@ -1,26 +1,107 @@
-"""BTS Tracking - central Pico W AP receiver (phase 1: console only).
+"""BTS Tracking central AP receiver with SD-backed JSONL storage.
 
-Boot order is controlled by the existing firmware/main.py:
-  1. Try infrastructure Wi-Fi and OTA by DEVICE_ID.
-  2. Import app and call run() regardless of Wi-Fi availability.
-  3. This app disables STA, starts AP and receives newline-delimited JSON.
-
-No SD writes, MQTT uploads or LCD yet.
+The unchanged main.py performs infrastructure Wi-Fi / OTA at boot; this app
+switches to the open BTS-TRACKING AP and accepts JSON lines over TCP.
+Each accepted record is appended to /sd/pending.jsonl before replying OK.
+No LCD or MQTT yet. No flash fallback: a failed SD write returns ERR sd.
 """
 import network
 import socket
 import time
 import ujson
 import machine
+import os
+import config
+import sdcard
 
 AP_SSID = "BTS-TRACKING"
 AP_IP = "192.168.4.1"
 LISTEN_PORT = 5000
 MAX_LINE_BYTES = 2048
+SD_MOUNT = "/sd"
+QUEUE_PATH = "/sd/pending.jsonl"
+
+# Standard SPI0 wiring for an SD module; override in local config.py.
+# NOTE: GP17 is also a button on some ST7735 LCD boards: do NOT share CS.
+SD_SPI_ID = getattr(config, "SD_SPI_ID", 0)
+SD_SCK_PIN = getattr(config, "SD_SCK_PIN", 18)
+SD_MOSI_PIN = getattr(config, "SD_MOSI_PIN", 19)
+SD_MISO_PIN = getattr(config, "SD_MISO_PIN", 16)
+SD_CS_PIN = getattr(config, "SD_CS_PIN", 17)
+SD_BAUDRATE = getattr(config, "SD_BAUDRATE", 10_000_000)
+
+sd_ready = False
+sd_fault = None
+records_saved = 0
+_sd_spi = None
+_sd_device = None
+
+
+def mount_sd():
+    global sd_ready, sd_fault, _sd_spi, _sd_device
+    # Follow the tested GPS Tracking logger startup sequence.
+    for attempt in range(1, 4):
+        print("SD init attempt {}/3".format(attempt))
+        try:
+            try:
+                os.umount(SD_MOUNT)
+            except OSError:
+                pass
+            _sd_spi = machine.SPI(
+                SD_SPI_ID, baudrate=SD_BAUDRATE, polarity=0, phase=0,
+                sck=machine.Pin(SD_SCK_PIN),
+                mosi=machine.Pin(SD_MOSI_PIN),
+                miso=machine.Pin(SD_MISO_PIN))
+            cs = machine.Pin(SD_CS_PIN, machine.Pin.OUT, value=1)
+            _sd_spi.write(b"\xff" * 10)
+            time.sleep_ms(100)
+            _sd_device = sdcard.SDCard(_sd_spi, cs)
+            os.mount(os.VfsFat(_sd_device), SD_MOUNT)
+            with open(QUEUE_PATH, "a") as out:
+                pass
+            sd_ready = True
+            sd_fault = None
+            print("SD mounted:", SD_MOUNT)
+            print("MQTT pending queue:", QUEUE_PATH)
+            return True
+        except Exception as exc:
+            sd_ready = False
+            sd_fault = str(exc)
+            print("SD ERROR (attempt {}): {}".format(attempt, sd_fault))
+            try:
+                os.umount(SD_MOUNT)
+            except OSError:
+                pass
+            try:
+                cs.value(1)
+            except (OSError, NameError):
+                pass
+            time.sleep_ms(500)
+    return False
+
+def save_record(record):
+    global sd_ready, sd_fault, records_saved
+    if not sd_ready:
+        return False
+    try:
+        # A full JSON object per newline survives restart and can be replayed.
+        # Open/close on every record, so OK means the file was closed normally.
+        line = ujson.dumps(record) + "\n"
+        with open(QUEUE_PATH, "a") as out:
+            out.write(line)
+            out.flush()
+        records_saved += 1
+        sd_fault = None
+        return True
+    except Exception as exc:
+        sd_ready = False
+        sd_fault = str(exc)
+        print("SD ERROR (append):", sd_fault)
+        # Deliberately do not acknowledge this record.
+        return False
 
 
 def start_ap():
-    # The existing main.py may have connected to home Wi-Fi for OTA.
     sta = network.WLAN(network.STA_IF)
     try:
         sta.disconnect()
@@ -30,11 +111,8 @@ def start_ap():
 
     ap = network.WLAN(network.AP_IF)
     ap.active(True)
-    ap.config(essid=AP_SSID, security=0)  # Open Wi-Fi, no password
-
-    # Pico W commonly defaults to 192.168.4.1, but set it explicitly.
+    ap.config(essid=AP_SSID, security=0)
     ap.ifconfig((AP_IP, "255.255.255.0", AP_IP, "0.0.0.0"))
-
     for _ in range(50):
         if ap.active():
             break
@@ -46,6 +124,7 @@ def start_ap():
     print("SSID:", AP_SSID)
     print("IP configuration:", ap.ifconfig())
     print("AP active:", ap.active())
+    print("SD ready:", sd_ready)
     print("================================")
     return ap
 
@@ -70,30 +149,35 @@ def handle_client(client, address):
             try:
                 chunk = client.recv(512)
             except OSError:
-                # Idle/disconnected sender. Return to accept loop.
                 break
             if not chunk:
                 break
             pending += chunk
-            if len(pending) > MAX_LINE_BYTES:
-                print("Rejected oversized message:", address)
-                client.send(b"ERR size\n")
-                break
-
             while b"\n" in pending:
                 line, pending = pending.split(b"\n", 1)
                 line = line.strip()
                 if not line:
                     continue
+                if len(line) > MAX_LINE_BYTES:
+                    print("Rejected oversized message:", address)
+                    client.send(b"ERR size\n")
+                    return
                 try:
                     record = parse_record(line)
-                    print("BTS_JSON:" + ujson.dumps(record))
-                    # ACK only after successful parsing and console output.
-                    # Future SD implementation must ACK only after durable write.
-                    client.send(b"OK\n")
                 except (ValueError, TypeError, UnicodeError) as exc:
                     print("Invalid record:", exc)
                     client.send(b"ERR json\n")
+                    continue
+                if save_record(record):
+                    print("SD SAVED #{}: {}".format(records_saved, ujson.dumps(record)))
+                    client.send(b"OK\n")
+                else:
+                    print("SD unavailable; record not acknowledged:", sd_fault)
+                    client.send(b"ERR sd\n")
+            if len(pending) > MAX_LINE_BYTES:
+                print("Rejected oversized message:", address)
+                client.send(b"ERR size\n")
+                break
     finally:
         client.close()
         print("Disconnected:", address)
@@ -101,6 +185,7 @@ def handle_client(client, address):
 
 def run():
     led = machine.Pin("LED", machine.Pin.OUT)
+    mount_sd()
     ap = start_ap()
     address = socket.getaddrinfo("0.0.0.0", LISTEN_PORT)[0][-1]
     server = socket.socket()
