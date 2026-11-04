@@ -30,7 +30,7 @@ def start_ap():
 
     ap = network.WLAN(network.AP_IF)
     ap.active(True)
-    ap.config(essid=AP_SSID)
+    ap.config(essid=AP_SSID, security=0)  # Open Wi-Fi, no password
 
     # Pico W commonly defaults to 192.168.4.1, but set it explicitly.
     ap.ifconfig((AP_IP, "255.255.255.0", AP_IP, "0.0.0.0"))
