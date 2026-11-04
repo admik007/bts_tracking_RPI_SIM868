@@ -26,15 +26,16 @@ class SIM868:
         return bytes(buf).decode("utf-8", "ignore")
 
     def start(self):
-        if getattr(config, "PULSE_PWRKEY_ON_BOOT", False):
-            pin = Pin(config.PWRKEY_PIN, Pin.OUT)
-            active = config.PWRKEY_ACTIVE_LEVEL
-            pin.value(1 - active)
-            time.sleep_ms(100)
-            pin.value(active)
-            time.sleep_ms(config.PWRKEY_PULSE_MS)
-            pin.value(1 - active)
-            time.sleep(6)
+        # On our SIM868 breakout GP14 is a maintained power-enable signal,
+        # not a PWRKEY pulse. Keep HIGH throughout operation.
+        if not hasattr(self, "_power_enabled"):
+            self.power_pin = Pin(
+                getattr(config, "POWER_ENABLE_PIN", 14),
+                Pin.OUT,
+                value=1
+            )
+            self._power_enabled = True
+            time.sleep(5)
         for _ in range(3):
             if "OK" in self.command("AT"):
                 self.command("ATE0")
