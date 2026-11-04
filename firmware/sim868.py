@@ -26,22 +26,31 @@ class SIM868:
         return bytes(buf).decode("utf-8", "ignore")
 
     def start(self):
-        # On our SIM868 breakout GP14 is a maintained power-enable signal,
-        # not a PWRKEY pulse. Keep HIGH throughout operation.
-        if not hasattr(self, "_power_enabled"):
+        # The known-working board uses a 1 s HIGH pulse followed by LOW.
+        # Apply it once per application run, never on a periodic retry.
+        if not hasattr(self, "_power_pulsed"):
             self.power_pin = Pin(
-                getattr(config, "POWER_ENABLE_PIN", 14),
+                getattr(config, "PWRKEY_PIN", 14),
                 Pin.OUT,
-                value=1
+                value=0
             )
-            self._power_enabled = True
-            time.sleep(5)
-        for _ in range(3):
-            if "OK" in self.command("AT"):
+            self.power_pin.value(1)
+            time.sleep(1)
+            self.power_pin.value(0)
+            self._power_pulsed = True
+            time.sleep(2)
+
+        for attempt in range(6):
+            response = self.command("AT", 2000)
+            if "OK" in response:
+                print("SIM868 AT OK")
                 self.command("ATE0")
                 self.command("AT+CENG=4,0", 3000)
                 self.command("AT+CGNSPWR=1", 5000)
+                reg = self.command("AT+CGREG?", 2000)
+                print("SIM868 CGREG:", reg.strip())
                 return True
+            print("SIM868 AT retry", attempt + 1)
             time.sleep(1)
         return False
 
