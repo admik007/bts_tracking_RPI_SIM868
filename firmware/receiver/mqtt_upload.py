@@ -85,7 +85,7 @@ class MQTTUploader:
         if self.sock is None:
             raise OSError("MQTT not connected")
         self.packet_id = (self.packet_id % 65535) + 1
-        identifier = self.packet_id.to_bytes(2, "big")
+        identifier = bytes((self.packet_id >> 8, self.packet_id & 255))
         body = _mqtt_string(topic) + identifier + payload.encode("utf-8")
         packet = b"\x32" + _remaining_length(len(body)) + body  # QoS 1 PUBLISH
         self.sock.write(packet)
