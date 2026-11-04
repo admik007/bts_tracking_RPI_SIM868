@@ -8,7 +8,7 @@
 - UART0 at 115200 baud, configurable.
 - SIM868 requires its own power supply with sufficient peak current; **do not power it from Pico 3.3 V**.
 - GPS antenna to SIM868 GNSS antenna input. GNSS fix can take time outdoors.
-- On the tested SIM868 board, Pico GP14 is held HIGH as a **power-enable** signal (not pulsed PWRKEY). Other carrier boards may require different control; verify before connecting.
+- On the tested SIM868 board, Pico GP14 sends a **1-second HIGH pulse, then LOW** on PWRKEY, matching the previously working script. Restart the modem from a known OFF state before testing: a PWRKEY pulse can toggle an already powered modem OFF. Other carrier boards may require different control; verify before connecting.
 
 ## Installation
 
