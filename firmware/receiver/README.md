@@ -10,7 +10,7 @@ Requires a **FAT/FAT32-formatted** microSD card connected over SPI. The
 `sdcard.py` driver is delivered by OTA together with `app.py`
 (original MicroPython driver from `micropython/micropython-lib`).
 
-Defaults (SPI0):
+Defaults (SPI0), verified against `gps_tracking_RPI_SIM868/firmware/logger.py` and `just_mount.py`:
 
 | Signal | Pico pin |
 | --- | --- |
@@ -34,7 +34,7 @@ SD_MISO_PIN = 16
 SD_SCK_PIN = 18
 SD_MOSI_PIN = 19
 SD_CS_PIN = 17  # Change to the actual free GPIO used by your SD module
-SD_BAUDRATE = 1000000
+SD_BAUDRATE = 10000000
 ```
 
 ## Data and acknowledgements
