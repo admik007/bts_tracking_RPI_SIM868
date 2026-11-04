@@ -356,7 +356,7 @@ def _upload_pending(sta):
                 new_pos = f.tell()
                 if not line.endswith(b"\\n"):
                     raise ValueError("Incomplete JSONL record at {}".format(pos))
-                record = ujson.loads(line)
+                record = ujson.loads(line.decode('utf-8'))
                 if not isinstance(record, dict) or not record.get("device"):
                     raise ValueError("Invalid JSONL record at {}".format(pos))
                 # Preserve sender identity and unchanged original record.
