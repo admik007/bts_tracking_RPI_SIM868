@@ -1,0 +1,18 @@
+# Copy to config.py on each Pico. Never commit real Wi-Fi passwords.
+SSID = "rpi_network"
+PASS = ""
+# HTTP directory must contain manifest.json and firmware files.
+OTA_BASE_URL = "http://192.168.10.1/firmware/bts"
+# Hardware: SIM868 on UART0, GP0=TX GP1=RX, PWRKEY GP14.
+MODEM_UART = 0
+MODEM_TX = 0
+MODEM_RX = 1
+MODEM_BAUD = 115200
+# SIM868 PWRKEY control depends on your breakout. Leave False initially.
+PULSE_PWRKEY_ON_BOOT = False
+PWRKEY_PIN = 14
+PWRKEY_ACTIVE_LEVEL = 0
+PWRKEY_PULSE_MS = 1200
+SAMPLE_SECONDS = 5
+# Optional local MQTT will be implemented after transport decision.
+# In v1 records are printed as JSON to USB serial.
