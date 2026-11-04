@@ -1,6 +1,6 @@
 """Pico W boot, bounded Wi-Fi update check, then local app.py.
 
-OTA source: OTA_BASE_URL/manifest.json. Manifest format:
+OTA source: http://HOST/firmware/<DEVICE_ID>/manifest.json. Manifest format:
 {"version":"1", "files":{"app.py":"<sha256>", "sim868.py":"<sha256>"}}
 The bootloader main.py is never overwritten by OTA.
 """
@@ -11,9 +11,11 @@ import network
 import ujson
 import uhashlib
 import ubinascii
-import config
+import config_wifi
 
-PROTECTED = ("main.py", "config.py", "boot.py")
+DEVICE_ID = "".join("{:02x}".format(b) for b in machine.unique_id())
+BASE_URL = "http://" + config_wifi.HOST.rstrip("/") + "/firmware/" + DEVICE_ID + "/"
+PROTECTED = ("main.py", "config.py", "config_wifi.py", "boot.py")
 MAX_FILE_BYTES = 70000
 
 def sha256(data):
@@ -36,7 +38,7 @@ def connect_wifi():
         return True
     for attempt in range(2):
         try:
-            wlan.connect(config.SSID, config.PASS)
+            wlan.connect(config_wifi.SSID, config_wifi.PASS)
             start = time.ticks_ms()
             while time.ticks_diff(time.ticks_ms(), start) < 7000:
                 if wlan.isconnected():
@@ -53,7 +55,7 @@ def connect_wifi():
     return False
 
 def update_firmware():
-    base = config.OTA_BASE_URL.rstrip("/")
+    base = BASE_URL.rstrip("/")
     raw = fetch(base + "/manifest.json")
     if len(raw) > 10000:
         raise ValueError("manifest too large")
@@ -126,6 +128,8 @@ def update_firmware():
         raise
 
 def boot():
+    print("Pico DEVICE_ID:", DEVICE_ID)
+    print("Firmware URL:", BASE_URL)
     if connect_wifi():
         try:
             update_firmware()

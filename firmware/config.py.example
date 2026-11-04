@@ -1,8 +1,4 @@
-# Copy to config.py on each Pico. Never commit real Wi-Fi passwords.
-SSID = "rpi_network"
-PASS = ""
-# HTTP directory must contain manifest.json and firmware files.
-OTA_BASE_URL = "http://192.168.10.1/firmware/bts"
+# Copy to config.py on each Pico (SIM868 hardware and sampling only).
 # Hardware: SIM868 on UART0, GP0=TX GP1=RX, PWRKEY GP14.
 MODEM_UART = 0
 MODEM_TX = 0
