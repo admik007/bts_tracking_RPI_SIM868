@@ -26,14 +26,19 @@ class SIM868:
         return bytes(buf).decode("utf-8", "ignore")
 
     def start(self):
-        # The known-working board uses a 1 s HIGH pulse followed by LOW.
-        # Apply it once per application run, never on a periodic retry.
-        if not hasattr(self, "_power_pulsed"):
-            self.power_pin = Pin(
-                getattr(config, "PWRKEY_PIN", 14),
-                Pin.OUT,
-                value=0
-            )
+        # First check whether the modem is already running. PWRKEY can
+        # switch an already-running SIM868 OFF, particularly on soft reboot.
+        self.power_pin = Pin(getattr(config, "PWRKEY_PIN", 14), Pin.OUT, value=0)
+        for attempt in range(3):
+            if "OK" in self.command("AT", 1500):
+                print("SIM868 already responding")
+                return self.initialize()
+            time.sleep_ms(400)
+
+        # Only send the known-working HIGH -> LOW power-on pulse once
+        # per application run, and only if there is no AT response.
+        if not getattr(self, "_power_pulsed", False):
+            print("SIM868 no AT response; attempting PWRKEY pulse")
             self.power_pin.value(1)
             time.sleep(1)
             self.power_pin.value(0)
@@ -41,18 +46,22 @@ class SIM868:
             time.sleep(2)
 
         for attempt in range(6):
-            response = self.command("AT", 2000)
-            if "OK" in response:
-                print("SIM868 AT OK")
-                self.command("ATE0")
-                self.command("AT+CENG=4,0", 3000)
-                self.command("AT+CGNSPWR=1", 5000)
-                reg = self.command("AT+CGREG?", 2000)
-                print("SIM868 CGREG:", reg.strip())
-                return True
+            if "OK" in self.command("AT", 2000):
+                print("SIM868 powered on")
+                return self.initialize()
             print("SIM868 AT retry", attempt + 1)
             time.sleep(1)
         return False
+
+    def initialize(self):
+        self.command("ATE0")
+        print("SIM868 CPIN:", self.command("AT+CPIN?").strip())
+        print("SIM868 CREG:", self.command("AT+CREG?").strip())
+        print("SIM868 CGREG:", self.command("AT+CGREG?").strip())
+        print("SIM868 COPS:", self.command("AT+COPS?").strip())
+        print("SIM868 CENG enable:", self.command("AT+CENG=4,0", 3000).strip())
+        print("SIM868 GNSS enable:", self.command("AT+CGNSPWR=1", 5000).strip())
+        return True
 
     @staticmethod
     def _number(v, base=10):
@@ -64,7 +73,7 @@ class SIM868:
     def cell(self):
         result = {"technology": "GSM", "mcc": None, "mnc": None,
                   "cellid": None, "lac": None, "bsic": None,
-                  "csq": None, "creg": None}
+                  "csq": None, "creg": None, "cgreg": None}
         for line in self.command("AT+CSQ").splitlines():
             if line.startswith("+CSQ:"):
                 csq = self._number(line.split(":", 1)[1].split(",")[0])
@@ -74,6 +83,11 @@ class SIM868:
                 parts = line.split(":", 1)[1].strip().split(",")
                 if len(parts) >= 2:
                     result["creg"] = self._number(parts[1])
+        for line in self.command("AT+CGREG?").splitlines():
+            if line.startswith("+CGREG:"):
+                parts = line.split(":", 1)[1].strip().split(",")
+                if len(parts) >= 2:
+                    result["cgreg"] = self._number(parts[1])
         for line in self.command("AT+CENG?", 3000).splitlines():
             if not line.startswith("+CENG: 0,"):
                 continue
@@ -90,9 +104,13 @@ class SIM868:
                 continue
             result["mcc"] = mcc
             result["mnc"] = mnc
+            cellid = self._number(fields[6], 16)
+            lac = self._number(fields[9], 16)
+            if mcc == "000" or mnc == "00" or not cellid:
+                continue
             result["bsic"] = self._number(fields[5])
-            result["cellid"] = self._number(fields[6], 16)
-            result["lac"] = self._number(fields[9], 16)
+            result["cellid"] = cellid
+            result["lac"] = lac
             break
         return result
 
