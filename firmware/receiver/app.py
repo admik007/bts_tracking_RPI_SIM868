@@ -28,7 +28,7 @@ SD_SCK_PIN = getattr(config, "SD_SCK_PIN", 18)
 SD_MOSI_PIN = getattr(config, "SD_MOSI_PIN", 19)
 SD_MISO_PIN = getattr(config, "SD_MISO_PIN", 16)
 SD_CS_PIN = getattr(config, "SD_CS_PIN", 17)
-SD_BAUDRATE = getattr(config, "SD_BAUDRATE", 1_000_000)
+SD_BAUDRATE = getattr(config, "SD_BAUDRATE", 10_000_000)
 
 sd_ready = False
 sd_fault = None
@@ -39,29 +39,45 @@ _sd_device = None
 
 def mount_sd():
     global sd_ready, sd_fault, _sd_spi, _sd_device
-    try:
-        _sd_spi = machine.SPI(
-            SD_SPI_ID, baudrate=SD_BAUDRATE, polarity=0, phase=0,
-            sck=machine.Pin(SD_SCK_PIN),
-            mosi=machine.Pin(SD_MOSI_PIN),
-            miso=machine.Pin(SD_MISO_PIN))
-        _sd_device = sdcard.SDCard(
-            _sd_spi, machine.Pin(SD_CS_PIN, machine.Pin.OUT))
-        os.mount(os.VfsFat(_sd_device), SD_MOUNT)
-        # Verify write access up front; never format the card automatically.
-        with open(QUEUE_PATH, "a") as out:
-            pass
-        sd_ready = True
-        sd_fault = None
-        print("SD mounted:", SD_MOUNT)
-        print("MQTT pending queue:", QUEUE_PATH)
-        return True
-    except Exception as exc:
-        sd_ready = False
-        sd_fault = str(exc)
-        print("SD ERROR (mount/write test):", sd_fault)
-        return False
-
+    # Follow the tested GPS Tracking logger startup sequence.
+    for attempt in range(1, 4):
+        print("SD init attempt {}/3".format(attempt))
+        try:
+            try:
+                os.umount(SD_MOUNT)
+            except OSError:
+                pass
+            _sd_spi = machine.SPI(
+                SD_SPI_ID, baudrate=SD_BAUDRATE, polarity=0, phase=0,
+                sck=machine.Pin(SD_SCK_PIN),
+                mosi=machine.Pin(SD_MOSI_PIN),
+                miso=machine.Pin(SD_MISO_PIN))
+            cs = machine.Pin(SD_CS_PIN, machine.Pin.OUT, value=1)
+            _sd_spi.write(b"\xff" * 10)
+            time.sleep_ms(100)
+            _sd_device = sdcard.SDCard(_sd_spi, cs)
+            os.mount(os.VfsFat(_sd_device), SD_MOUNT)
+            with open(QUEUE_PATH, "a") as out:
+                pass
+            sd_ready = True
+            sd_fault = None
+            print("SD mounted:", SD_MOUNT)
+            print("MQTT pending queue:", QUEUE_PATH)
+            return True
+        except Exception as exc:
+            sd_ready = False
+            sd_fault = str(exc)
+            print("SD ERROR (attempt {}): {}".format(attempt, sd_fault))
+            try:
+                os.umount(SD_MOUNT)
+            except OSError:
+                pass
+            try:
+                cs.value(1)
+            except (OSError, NameError):
+                pass
+            time.sleep_ms(500)
+    return False
 
 def save_record(record):
     global sd_ready, sd_fault, records_saved
