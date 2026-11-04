@@ -8,7 +8,7 @@
 - UART0 at 115200 baud, configurable.
 - SIM868 requires its own power supply with sufficient peak current; **do not power it from Pico 3.3 V**.
 - GPS antenna to SIM868 GNSS antenna input. GNSS fix can take time outdoors.
-- On the tested SIM868 board, Firmware uses the same default UART0 initialization as the verified standalone script. **GP14 is not touched by default**, avoiding accidental modem shutdown. To enable an optional PWRKEY pulse only when no AT response is received, set `PWRKEY_PULSE_IF_NO_AT = True` in local `config.py`. Do this only when the modem is known OFF. Other carrier boards may require different control; verify before connecting.
+- On this SIM868 carrier board, startup sets GP14 LOW for 1 second, then HIGH and **keeps it HIGH**. This happens once per app run, never during periodic AT retries. This assumes GP14 is wired as a level-controlled enable; verify the actual carrier board wiring, as PWRKEY on other boards may be pulse-controlled.
 
 ## Installation
 
