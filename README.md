@@ -8,7 +8,7 @@
 - UART0 at 115200 baud, configurable.
 - SIM868 requires its own power supply with sufficient peak current; **do not power it from Pico 3.3 V**.
 - GPS antenna to SIM868 GNSS antenna input. GNSS fix can take time outdoors.
-- Optional PWRKEY via GP14 is **disabled by default**, because trigger polarity/timing depends on the carrier board. Enable only after verifying hardware wiring.
+- On the tested SIM868 board, Pico GP14 is held HIGH as a **power-enable** signal (not pulsed PWRKEY). Other carrier boards may require different control; verify before connecting.
 
 ## Installation
 
