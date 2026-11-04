@@ -128,6 +128,9 @@ def update_firmware():
         raise
 
 def boot():
+    # Give Thonny time to attach after Pico starts.
+    print("Startup delay: 15 seconds (Thonny connection)")
+    time.sleep(15)
     print("Pico DEVICE_ID:", DEVICE_ID)
     print("Firmware URL:", BASE_URL)
     if connect_wifi():
