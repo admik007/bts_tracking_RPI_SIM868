@@ -26,35 +26,27 @@ class SIM868:
         return bytes(buf).decode("utf-8", "ignore")
 
     def start(self):
-        # Never touch GP14 by default. The working standalone test reaches
-        # CGREG=0,1 without any PWRKEY pulse. An impulse can turn ON modem OFF.
-        for attempt in range(5):
+        # Tested board wiring: request OFF with GP14 LOW for one second,
+        # then request ON with GP14 HIGH and hold it HIGH.
+        # Apply only once per application run, not on later retries.
+        if not getattr(self, "_power_initialized", False):
+            self.power_pin = Pin(getattr(config, "PWRKEY_PIN", 14),
+                                 Pin.OUT, value=0)
+            print("SIM868 power: LOW (1s)")
+            self.power_pin.value(0)
+            time.sleep(1)
+            print("SIM868 power: HIGH")
+            self.power_pin.value(1)
+            self._power_initialized = True
+            time.sleep(5)
+
+        for attempt in range(8):
             response = self.command("AT", 2000)
             if "OK" in response:
                 print("SIM868 AT OK")
                 return self.initialize()
             print("SIM868 AT retry", attempt + 1, repr(response))
             time.sleep(1)
-
-        # Optional, explicitly enabled for boards needing a startup pulse.
-        # Do not pulse again on periodic retries.
-        if (getattr(config, "PWRKEY_PULSE_IF_NO_AT", False)
-                and not getattr(self, "_power_pulsed", False)):
-            print("SIM868 PWRKEY pulse (configured)")
-            self.power_pin = Pin(getattr(config, "PWRKEY_PIN", 14),
-                                 Pin.OUT, value=0)
-            self.power_pin.value(1)
-            time.sleep(1)
-            self.power_pin.value(0)
-            self._power_pulsed = True
-            time.sleep(5)
-            for attempt in range(6):
-                response = self.command("AT", 2000)
-                if "OK" in response:
-                    print("SIM868 AT OK after power pulse")
-                    return self.initialize()
-                print("SIM868 pulse retry", attempt + 1, repr(response))
-                time.sleep(1)
         return False
 
     def initialize(self):
