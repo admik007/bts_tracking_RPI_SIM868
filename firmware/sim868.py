@@ -5,9 +5,9 @@ import config
 
 class SIM868:
     def __init__(self):
-        self.uart = UART(config.MODEM_UART, baudrate=config.MODEM_BAUD,
-                         tx=Pin(config.MODEM_TX), rx=Pin(config.MODEM_RX),
-                         timeout=100, rxbuf=2048)
+        # Match the UART constructor used by the verified working Pico script.
+        # RP2040 UART0 default pins are GP0 TX / GP1 RX.
+        self.uart = UART(config.MODEM_UART, config.MODEM_BAUD)
 
     def command(self, cmd, timeout_ms=2000):
         while self.uart.any():
@@ -26,31 +26,35 @@ class SIM868:
         return bytes(buf).decode("utf-8", "ignore")
 
     def start(self):
-        # First check whether the modem is already running. PWRKEY can
-        # switch an already-running SIM868 OFF, particularly on soft reboot.
-        self.power_pin = Pin(getattr(config, "PWRKEY_PIN", 14), Pin.OUT, value=0)
-        for attempt in range(3):
-            if "OK" in self.command("AT", 1500):
-                print("SIM868 already responding")
+        # Never touch GP14 by default. The working standalone test reaches
+        # CGREG=0,1 without any PWRKEY pulse. An impulse can turn ON modem OFF.
+        for attempt in range(5):
+            response = self.command("AT", 2000)
+            if "OK" in response:
+                print("SIM868 AT OK")
                 return self.initialize()
-            time.sleep_ms(400)
+            print("SIM868 AT retry", attempt + 1, repr(response))
+            time.sleep(1)
 
-        # Only send the known-working HIGH -> LOW power-on pulse once
-        # per application run, and only if there is no AT response.
-        if not getattr(self, "_power_pulsed", False):
-            print("SIM868 no AT response; attempting PWRKEY pulse")
+        # Optional, explicitly enabled for boards needing a startup pulse.
+        # Do not pulse again on periodic retries.
+        if (getattr(config, "PWRKEY_PULSE_IF_NO_AT", False)
+                and not getattr(self, "_power_pulsed", False)):
+            print("SIM868 PWRKEY pulse (configured)")
+            self.power_pin = Pin(getattr(config, "PWRKEY_PIN", 14),
+                                 Pin.OUT, value=0)
             self.power_pin.value(1)
             time.sleep(1)
             self.power_pin.value(0)
             self._power_pulsed = True
-            time.sleep(2)
-
-        for attempt in range(6):
-            if "OK" in self.command("AT", 2000):
-                print("SIM868 powered on")
-                return self.initialize()
-            print("SIM868 AT retry", attempt + 1)
-            time.sleep(1)
+            time.sleep(5)
+            for attempt in range(6):
+                response = self.command("AT", 2000)
+                if "OK" in response:
+                    print("SIM868 AT OK after power pulse")
+                    return self.initialize()
+                print("SIM868 pulse retry", attempt + 1, repr(response))
+                time.sleep(1)
         return False
 
     def initialize(self):
