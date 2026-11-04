@@ -1,0 +1,8 @@
+MQTT_HOST = "localhost"
+MQTT_PORT = 1883
+MQTT_TOPIC = "gps/+/location"
+
+MYSQL_HOST = "localhost"
+MYSQL_USER = "xxxx"
+MYSQL_PASS = "xxxxxxxx"
+MYSQL_DB = "xxxxxxxxxxxxxxxx"

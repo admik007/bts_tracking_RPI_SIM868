@@ -1,0 +1,16 @@
+<?php
+define("DB_HOST", "localhost");
+define("DB_USERNAME", DB_USER");
+define("DB_PASSWORD", "DB_PASS");
+define("DB_DATABASE_NAME", "DB_NAME");
+
+// Create connection
+$spojenie = new mysqli(DB_HOST, DB_USERNAME, DB_PASSWORD, DB_DATABASE_NAME);
+
+// Check connection
+if ($spojenie->connect_error) {
+  die("Connection failed: " . $spojenie->connect_error);
+}
+
+@$MySQL_table="DB_TABLE";
+?>

@@ -1,0 +1,5 @@
+firmware/config.py
+server/web/.htaccess
+server/web/_config.php
+server/mqtt_db_connect.conf
+GIT.sh
