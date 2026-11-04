@@ -4,8 +4,9 @@ MODEM_UART = 0
 MODEM_TX = 0
 MODEM_RX = 1
 MODEM_BAUD = 115200
-# Known-working legacy sequence: GP14 HIGH for 1 s, then LOW.
+# Do NOT pulse PWRKEY automatically. Enable only after proving it is needed.
 PWRKEY_PIN = 14
+PWRKEY_PULSE_IF_NO_AT = False
 SAMPLE_SECONDS = 5
 # Optional local MQTT will be implemented after transport decision.
 # In v1 records are printed as JSON to USB serial.
