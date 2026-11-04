@@ -38,7 +38,8 @@ class SIM868:
             print("SIM868 power: HIGH")
             self.power_pin.value(1)
             self._power_initialized = True
-            time.sleep(5)
+            print("SIM868 GSM startup: waiting 12s")
+            time.sleep(12)
 
         for attempt in range(8):
             response = self.command("AT", 2000)
