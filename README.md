@@ -13,14 +13,14 @@
 ## Installation
 
 1. Install MicroPython on Pico W / Pico 2 W; open in Thonny.
-2. Copy `firmware/config.py.example` to `config.py` **on the Pico** and set Wi-Fi/OTA server. Keep real secrets out of Git.
-3. Copy `main.py`, `app.py`, `sim868.py`, `config.py` to Pico filesystem.
+2. Copy `firmware/config_wifi.py.example` to `config_wifi.py` **on the Pico**, set `SSID`, `PASS`, `HOST` (firmware server host without protocol). Keep credentials out of Git.
+3. Copy `firmware/config.py.example` to `config.py` and adjust SIM868 pins/settings. Copy `main.py`, `app.py`, `sim868.py`, `config.py`, `config_wifi.py` to Pico filesystem.
 4. Restart and watch USB serial. Expected `BTS_JSON:{...}` roughly every 5 seconds (AT command time may extend that interval).
 5. Verify `mcc`, `mnc`, `cellid`, `lac`, `bsic` against raw `AT+CENG?` and `gps_valid` outdoors. If `mcc/mnc` differ from SIM operator, the modem may be roaming.
 
 ## OTA hosting
 
-`main.py` checks `OTA_BASE_URL/manifest.json` if Wi-Fi connects within ~14 seconds; otherwise runs local `app.py`. It never waits for Internet to collect measurements. Host e.g. `http://192.168.10.1/firmware/bts/` with files `app.py`, `sim868.py`, `manifest.json`.
+`main.py` derives `DEVICE_ID` from `machine.unique_id()` and checks `http://HOST/firmware/DEVICE_ID/manifest.json` if Wi-Fi connects within ~14 seconds; otherwise runs local `app.py`. It never waits for Internet to collect measurements. For example, Pico ID `e66164084360a42e` uses `http://192.168.10.1/firmware/e66164084360a42e/` with `app.py`, `sim868.py` and `manifest.json`. Each Pico may have a different manifest. `config.py`, `config_wifi.py` and `main.py` are not updated via OTA.
 
 Manifest example (replace placeholders with SHA256 digests of **exact hosted bytes**):
 
@@ -30,7 +30,7 @@ Manifest example (replace placeholders with SHA256 digests of **exact hosted byt
 
 Linux digest command: `sha256sum app.py sim868.py`.
 
-OTA verifies SHA-256 before switching. `main.py` and `config.py` are protected from OTA. **Important:** OTA over HTTP is not authenticated; SHA-256 only verifies the downloaded bytes against the manifest, which can itself be modified by an attacker on the network. Use only on a trusted isolated AP and move to authenticated HTTPS/signatures before untrusted networks. No rollback after a successfully installed but logically broken application; keep USB/Thonny recovery available.
+OTA verifies SHA-256 before switching. `main.py`, `config.py` and `config_wifi.py` are protected from OTA. **Important:** OTA over HTTP is not authenticated; SHA-256 only verifies the downloaded bytes against the manifest, which can itself be modified by an attacker on the network. Use only on a trusted isolated AP and move to authenticated HTTPS/signatures before untrusted networks. No rollback after a successfully installed but logically broken application; keep USB/Thonny recovery available.
 
 ## Important limitations
 
