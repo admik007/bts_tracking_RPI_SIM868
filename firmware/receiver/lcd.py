@@ -195,24 +195,27 @@ class StatusLCD:
         self.backlight.freq(1000)
         self.backlight.duty_u16(32768)
         self.lcd = LCD_1inch44()
-        self.render(False, 0, None, None, "WAITING")
+        self.render(False, 0, {}, "WAITING")
 
-    def render(self, sd_ok, saved, last_device, last_cell, state="RECEIVING"):
+    def render(self, sd_ok, saved, senders, state="RECEIVING"):
         lcd = self.lcd
         lcd.fill(lcd.BLACK)
-        lcd.text("BTS TRACKING", 4, 3, lcd.WHITE)
-        lcd.hline(0, 15, 128, lcd.WHITE)
-        lcd.text("AP 192.168.4.1", 2, 21, lcd.GBLUE)
-        lcd.text("TCP 5000", 2, 35, lcd.WHITE)
-        lcd.text("SD: " + ("OK" if sd_ok else "ERROR"), 2, 50,
+        lcd.text("BTS TRACKING", 4, 2, lcd.WHITE)
+        lcd.hline(0, 13, 128, lcd.WHITE)
+        lcd.text("AP: 192.168.4.1", 2, 17, lcd.GBLUE)
+        lcd.text("SD: " + ("OK" if sd_ok else "ERROR"), 2, 30,
                  lcd.GREEN if sd_ok else lcd.RED)
-        lcd.text("Saved: {}".format(saved), 2, 65, lcd.WHITE)
-        if last_cell:
-            lcd.text("{} {}".format(last_cell[0], last_cell[1]), 2, 81,
-                     lcd.YELLOW)
-            lcd.text("CID: {}".format(last_cell[2]), 2, 95, lcd.WHITE)
-        elif last_device:
-            lcd.text("DEV:" + str(last_device)[-8:], 2, 89, lcd.WHITE)
-        lcd.text(state[:20], 2, 116,
+        lcd.text("Saved: {}".format(saved), 2, 43, lcd.WHITE)
+        lcd.hline(0, 56, 128, lcd.WHITE)
+        # Three fixed slots. Every sender is identified by its unique device ID
+        # and retains its row even as measurements arrive from other senders.
+        # One text line is <= 16 chars at 8 px per char.
+        for idx, cells in enumerate(senders.values()):
+            if idx >= 3:
+                break
+            operator, cid = cells
+            row = "{} {} {}".format(idx + 1, operator, cid)
+            lcd.text(row[:16], 2, 61 + idx * 13, lcd.YELLOW)
+        lcd.text(state[:16], 2, 112,
                  lcd.GREEN if sd_ok else lcd.RED)
         lcd.show()

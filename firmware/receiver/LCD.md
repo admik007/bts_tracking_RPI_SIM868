@@ -24,7 +24,7 @@ GP17 until its wiring is resolved. LCD display alone uses no SD GPIO.
 - AP IP and TCP listener port
 - SD OK / ERROR
 - Count of stored messages during current run
-- Last MCC+MNC, LAC and CellID
+- Up to three sender rows: sender number, MCC+MNC and CellID (without LAC)
 - Last state (`RECEIVING`, `SD ERROR`)
 
 The LCD is optional at runtime: if initialization fails, the receiver
@@ -34,3 +34,8 @@ The display initializes before SD, so SD initialization errors are visible.
 After merging and `git pull` on the Apache host, the receiver OTA manifest
 updates `app.py`, `lcd.py` and `sdcard.py`. No changes to publisher or
 bootstrap `main.py`. This step does not implement keys or MQTT yet.
+
+Sender rows are assigned in order of first successfully stored message during
+this boot, and each device's row updates independently. Additional senders are
+still logged to SD, but are not shown on this three-row screen. Row numbering
+is local to the current boot, not a permanent device assignment.
