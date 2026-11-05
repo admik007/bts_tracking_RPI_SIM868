@@ -79,40 +79,7 @@ if ($cell_loadid == 'on') {
 }
 
 
-if (($delete == 'on') and ($_SESSION["admin"] == "admin_ok")) {
- if(isset($_GET["id"])) $dbid=$_GET["id"];
-# echo "DELETE FROM $MySQL_table WHERE id='$dbid';<br> \n";
- mysqli_query($spojenie,"DELETE FROM $MySQL_table WHERE id='$dbid';");
- echo "Value successfully deleted.<br>\n";
-}
-
-
-if (($update == 'on') and ($_SESSION["admin"] == "admin_ok")) {
- if(isset($_GET["id"])) $dbid=$_GET["id"];
-
- if(isset($_GET["address_new"]))  $address_new=$_GET["address_new"];
-
- if(isset($_GET["position_lat"])) $position_lat=$_GET["position_lat"];
- $position_lat = str_replace(' ', '', $position_lat);
-
- if(isset($_GET["position_lon"])) $position_lon=$_GET["position_lon"];
- $position_lon = str_replace(' ', '', $position_lon);
-
-# echo "UPDATE $MySQL_table SET lat='$position_lat' WHERE id='$dbid';<br> \n";
-# echo "UPDATE $MySQL_table SET lon='$position_lon' WHERE id='$dbid';<br> \n";
-# echo "UPDATE $MySQL_table SET address='$address_new' WHERE id='$dbid';<br> \n";
- mysqli_query($spojenie,"UPDATE $MySQL_table SET lat='$position_lat' WHERE id='$dbid';");
- mysqli_query($spojenie,"UPDATE $MySQL_table SET lon='$position_lon' WHERE id='$dbid';");
- mysqli_query($spojenie,"UPDATE $MySQL_table SET address='$address_new' WHERE id='$dbid';");
- echo "New values written.<br>\n";
-}
-
-if ($_SESSION["admin"] == "admin_ok") {
- echo "<center>SELECT * FROM $MySQL_table WHERE lat NOT like '0.0%' AND lon NOT like '0.0%' AND mcc='231' $FILTER order by time DESC\n";
-}
-
-
-
+// Mutations are now handled exclusively by /admin.php with POST, CSRF and admin login.
 // Send compact, safely escaped data; build popup HTML only when opened.
 $tracking_list_db = mysqli_query($spojenie,
  "SELECT id, lat, lon, mcc, mnc, cellid, address, alt, time FROM $MySQL_table WHERE lat NOT like '0.0%' AND lon NOT like '0.0%' $FILTER");
@@ -276,35 +243,13 @@ function cellPopup(point) {
   ({'226':'Romania', '216':'Hungary', '284':'Bulgaria'}[mcc] || 'Other');
  const title = '<strong>Operator:</strong> ' + escapeHtml(code) + ' - ' + escapeHtml(operator)
   + '<br><strong>CellID:</strong> ' + escapeHtml(cellid)
-  + '<br><strong>DB_ID:</strong> ' + escapeHtml(id);
- if (!btsAdmin) {
-  return title + '<br><strong>Address:</strong> ' + escapeHtml(address)
-   + '<br><strong>Position:</strong> ' + escapeHtml(lat) + ' / ' + escapeHtml(lon)
-   + ' (' + escapeHtml(alt) + ' mnm)';
- }
- function field(name, value, size) {
-  return '<input type="text" name="' + name + '" value="' + escapeHtml(value)
-   + '"' + (size ? ' size="' + size + '"' : '') + '>';
- }
- return '<form method="get" action="/">'
-  + title + '<br><strong>Time:</strong> ' + escapeHtml(time)
-  + '<input type="hidden" name="id" value="' + encodeURIComponent(id) + '">'
-  + '<input type="hidden" name="update" value="on">'
-  + '<br><strong>Address:</strong> ' + field('address_new', address)
-  + '<br><strong>Position:</strong> ' + field('position_lat', lat, 9)
-  + ' / ' + field('position_lon', lon, 9)
-  + '<br><strong>Sea level:</strong> ' + escapeHtml(alt) + ' mnm'
-  + '<br><button type="submit">Ulozit</button></form>'
-  + '<form method="get" action="/">'
-  + '<input type="hidden" name="id" value="' + encodeURIComponent(id) + '">'
-  + '<input type="hidden" name="delete" value="on">'
-  + '<button type="submit">Zmazat - ' + escapeHtml(id) + '</button></form>'
-  + '<a target="_blank" rel="noopener" href="https://api.geoapify.com/v1/geocode/reverse?type=street&amp;format=xml&amp;lat='
-  + encodeURIComponent(lat) + '&amp;lon=' + encodeURIComponent(lon)
-  + '&amp;apiKey=054b7c9fcae24adf9976f2e5b6982fa0">Get address</a> &nbsp; '
-  + '<a target="_blank" rel="noopener" href="https://maps.ztk-comp.sk/?lat='
-  + encodeURIComponent(lat) + '&amp;lon=' + encodeURIComponent(lon)
-  + '&amp;zoom=16">OSM</a>';
+  + '<br><strong>DB_ID:</strong> ' + escapeHtml(id)
+  + '<br><strong>Address:</strong> ' + escapeHtml(address)
+  + '<br><strong>Position:</strong> ' + escapeHtml(lat) + ' / ' + escapeHtml(lon)
+  + ' (' + escapeHtml(alt) + ' mnm)';
+ return title + '<br><a href="/admin.php?id=' + encodeURIComponent(id)
+  + '">Upraviť BTS (admin)</a>';
+
 }
 const btsCanvas = L.canvas({padding: 0.5});
 const batchSize = 350;
