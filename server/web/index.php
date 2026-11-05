@@ -315,12 +315,13 @@ function drawBtsBatch() {
  for (; nextPoint < end; nextPoint++) {
   const point = latLong[nextPoint];
   const palette = operatorInfo[point[2] + point[3]];
-  const color = palette ? palette[1] : '#888888';
+  const color = palette ? palette[1] : (point[2] !== '231' ? '#A' + point[2] + point[3] : '#888888');
+  const fillColor = palette ? 'Black' : (point[2] !== '231' ? '#F' + point[2] + point[3] : 'Black');
   const marker = L.circleMarker([point[0], point[1]], {
    renderer: btsCanvas,
    radius: 3,
    color: color,
-   fillColor: 'Black',
+   fillColor: fillColor,
    fillOpacity: 1,
    weight: 1
   }).addTo(map);
