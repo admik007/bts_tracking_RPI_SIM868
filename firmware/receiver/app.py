@@ -208,7 +208,8 @@ def handle_client(client, address):
                     if device in sender_cells or len(sender_cells) < MAX_LCD_SENDERS:
                         sender_cells[device] = (
                             str(record.get("mcc", "")) + str(record.get("mnc", "")),
-                            str(record.get("cellid", "-")))
+                            str(record.get("cellid", "-")),
+                            time.ticks_ms())  # Monotonic receiver receive timestamp
                     print("SD SAVED #{}: {}".format(records_saved, ujson.dumps(record)))
                     show_status("RECEIVING")
                     client.send(b"OK\n")
@@ -429,8 +430,14 @@ def run():
     sta = None
     mode = "RECEIVING"
     last_key = None
+    last_lcd_refresh = time.ticks_ms()
 
     while True:
+        # Refresh sender activity even when no messages arrive; otherwise
+        # a disconnected sender would stay green indefinitely.
+        if time.ticks_diff(time.ticks_ms(), last_lcd_refresh) >= 1000:
+            show_status("RECEIVING" if mode == "RECEIVING" else mode)
+            last_lcd_refresh = time.ticks_ms()
         # Detect key-down edge, with release before the same key triggers again.
         pressed = None
         for name, pin in (("SAFE", KEY3), ("RECEIVING", KEY2), ("UPLOAD", KEY0)):
