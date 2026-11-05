@@ -226,9 +226,12 @@ class StatusLCD:
             last_seen = cells[2] if len(cells) > 2 else None
             active = (last_seen is not None and
                       0 <= time.ticks_diff(time.ticks_ms(), last_seen) < 30000)
-            y = 61 + idx * 13
+            # Two 8-pixel-high rows per sender: current cell + previous cell.
+            y = 59 + idx * 17
             row = "{} {} {}".format(idx + 1, operator, cid)
             lcd.text(row[:14], 2, y, lcd.YELLOW)
+            previous = cells[3] if len(cells) > 3 else "-"
+            lcd.text(("  prev: " + str(previous))[:16], 2, y + 8, lcd.WHITE)
             # Reserve rightmost 9 px for a 7x7 green ring or red X.
             cx, cy = 121, y + 3
             color = lcd.GREEN if active else lcd.RED
