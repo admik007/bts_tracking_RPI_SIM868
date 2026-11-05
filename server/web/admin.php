@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 // Separate BTS administration. No password or credential is stored in this repository.
-// Configure BTS_ADMIN_PASSWORD_HASH in the PHP/Apache environment (password_hash(...)).
+// Keep the password hash in the untracked _admin_config.php (password_hash(...)).
 ini_set('session.use_strict_mode', '1');
 ini_set('session.cookie_httponly', '1');
 if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
@@ -50,8 +50,14 @@ function valid_coordinate($value, float $min, float $max): ?float {
     return is_finite($number) && $number >= $min && $number <= $max ? $number : null;
 }
 
-$hash = getenv('BTS_ADMIN_PASSWORD_HASH') ?: '';
-$enabled = $hash !== '';
+// Local configuration is ignored by Git. Missing/invalid config disables login.
+$adminConfig = __DIR__ . '/_admin_config.php';
+if (is_file($adminConfig)) {
+    require_once $adminConfig;
+}
+$hash = defined('BTS_ADMIN_PASSWORD_HASH') && is_string(BTS_ADMIN_PASSWORD_HASH)
+    ? BTS_ADMIN_PASSWORD_HASH : '';
+$enabled = $hash !== '' && password_get_info($hash)['algoName'] !== 'unknown';
 $error = '';
 $notice = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -93,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 $authenticated = $enabled && !empty($_SESSION['bts_admin_auth']);
 if (!$authenticated && $error === '' && !$enabled) {
-    $error = 'Administrácia nie je nakonfigurovaná. Nastav BTS_ADMIN_PASSWORD_HASH na serveri.';
+    $error = 'Administrácia nie je nakonfigurovaná. Vytvor server/web/_admin_config.php podľa vzoru.';
 }
 $id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: 0;
 $operator = (string)($_GET['mnc'] ?? '');
