@@ -5,14 +5,6 @@ if(isset($_GET["valid"])) $valid=$_GET["valid"];
 if (empty($_GET["mnc"])) $mnc='';
 if(isset($_GET["mnc"])) $mnc=$_GET["mnc"];
 
-if (empty($_GET["today"])) $today='';
-if(isset($_GET["today"])) $today=$_GET["today"];
-
-
-if (empty($_GET["lasthr"])) $lasthr='';
-if(isset($_GET["lasthr"])) $lasthr=$_GET["lasthr"];
-
-
 if (empty($_GET["cell_id"])) $cell_id='';
 if(isset($_GET["cell_id"])) $cell_id=$_GET["cell_id"];
 
@@ -31,23 +23,6 @@ if(isset($_GET["update"])) $update=$_GET["update"];
 
 if (empty($_GET["delete"])) $delete='';
 if(isset($_GET["delete"])) $delete=$_GET["delete"];
-
-
-
-if (empty($_GET["year"])) $year=Date("Y");
-if(isset($_GET["year"])) $year=$_GET["year"];
-
-if (empty($_GET["month"])) $month=Date("m");
-if(isset($_GET["month"])) $month=$_GET["month"];
-
-if (empty($_GET["day"])) $day=Date("d");
-if(isset($_GET["day"])) $day=$_GET["day"];
-
-if (empty($_GET["hour"])) $hour=Date("H");
-if(isset($_GET["hour"])) $hour=$_GET["hour"];
-
-if (empty($_GET["min"])) $min=Date("i");
-if(isset($_GET["min"])) $min=$_GET["min"];
 
 
 
@@ -87,15 +62,6 @@ if ($valid === 'false') {
  $FILTER .= " AND (address IS NULL OR address = '' OR address LIKE '%no info%')";
 } elseif ($valid === 'true') {
  $FILTER .= " AND address IS NOT NULL AND address <> '' AND address NOT LIKE '%no info%'";
-}
-$year  = preg_match('/^[0-9]{4}$/', (string)$year) ? $year : date('Y');
-$month = preg_match('/^(0[1-9]|1[0-2])$/', (string)$month) ? $month : date('m');
-$day   = preg_match('/^(0[1-9]|[12][0-9]|3[01])$/', (string)$day) ? $day : date('d');
-if ($today === 'on') {
- $FILTER .= " AND time LIKE '".$year."-".$month."-".$day."%'";
-}
-if ($lasthr === 'on') {
- $FILTER .= " AND time LIKE '".$year."-".$month."-".$day."T00%'";
 }
 if ($cell_loadid === 'on') {
  $cell_id = filter_var($cell_id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
@@ -275,8 +241,13 @@ $marker=$marker.'
  .filter-link:hover, .filter-link.active { background: #364559; border-color: #aebed1; }
  .orange { border-left: 4px solid orange; } .magenta { border-left: 4px solid magenta; }
  .green { border-left: 4px solid #29ad50; } .blue { border-left: 4px solid dodgerblue; }
- .details-table { margin: 8px auto; border-collapse: collapse; max-width: 100%; }
- .details-table td { padding: 6px; }
+ .operator-grid { display: grid; grid-template-columns: repeat(4, minmax(165px, 1fr)); gap: 10px; width: 100%; max-width: 1050px; }
+ .operator-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+ .operator-panel .filter-link { text-align: center; font-weight: 600; }
+ .cell-select { width: 100%; min-width: 0; padding: 8px; border-radius: 6px; border: 1px solid #526070; background: #121920; color: #e7edf3; }
+ .status-line { display: flex; justify-content: center; align-items: center; gap: 18px; flex-wrap: wrap; padding: 8px; }
+ @media (max-width: 740px) { .operator-grid { grid-template-columns: repeat(2, minmax(145px, 1fr)); } }
+ @media (max-width: 370px) { .operator-grid { grid-template-columns: 1fr; } }
  #map { margin: 0 auto; }
  @media (max-width: 700px) { .toolbar { justify-content: flex-start; } .brand { flex-basis: 100%; } }
 </style>
@@ -284,12 +255,41 @@ $marker=$marker.'
 <body bgcolor="black" text="white">
 <div class="toolbar">
  <strong class="brand">BTS Tracking</strong>
- <div class="toolbar-group" aria-label="Filter operatora">
-  <a class="filter-link<?php echo $mnc === '' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['valid'=>$valid])); ?>">Všetci</a>
-  <a class="filter-link orange<?php echo $mnc === '01' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>'01','valid'=>$valid])); ?>">Orange</a>
-  <a class="filter-link magenta<?php echo $mnc === '02' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>'02','valid'=>$valid])); ?>">Telekom</a>
-  <a class="filter-link green<?php echo $mnc === '03' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>'03','valid'=>$valid])); ?>">4ka</a>
-  <a class="filter-link blue<?php echo $mnc === '06' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>'06','valid'=>$valid])); ?>">O2</a>
+ <a class="filter-link<?php echo $mnc === '' && $cell_loadid !== 'on' ? ' active' : ''; ?>" href="?">Všetci operátori</a>
+ <div class="operator-grid">
+<?php
+$operators = [
+ ['mnc' => '01', 'name' => 'Orange', 'class' => 'orange'],
+ ['mnc' => '02', 'name' => 'Telekom', 'class' => 'magenta'],
+ ['mnc' => '03', 'name' => '4ka', 'class' => 'green'],
+ ['mnc' => '06', 'name' => 'O2', 'class' => 'blue'],
+];
+foreach ($operators as $op) {
+ $operator_mnc = $op['mnc'];
+ $selected = $mnc === $operator_mnc;
+ $href = '?' . http_build_query(array_filter(['mnc' => $operator_mnc, 'valid' => $valid]));
+ $stmt = mysqli_prepare($spojenie, "SELECT id, cellid, address FROM $MySQL_table WHERE mcc = '231' AND mnc = ? AND technology = 'GSM' ORDER BY cellid ASC");
+ mysqli_stmt_bind_param($stmt, 's', $operator_mnc);
+ mysqli_stmt_execute($stmt);
+ $cells = mysqli_stmt_get_result($stmt);
+ $cell_count = mysqli_num_rows($cells);
+?>
+  <div class="operator-panel">
+   <a class="filter-link <?php echo $op['class'] . ($selected ? ' active' : ''); ?>" href="<?php echo htmlspecialchars($href, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($op['name'], ENT_QUOTES, 'UTF-8'); ?></a>
+   <form method="get" action="/">
+    <input type="hidden" name="mnc" value="<?php echo $operator_mnc; ?>">
+    <input type="hidden" name="cell_loadid" value="on">
+    <select class="cell-select" name="cell_id" aria-label="CellID <?php echo htmlspecialchars($op['name'], ENT_QUOTES, 'UTF-8'); ?>" onchange="this.form.submit()">
+     <option value="" selected>Celkom buniek: <?php echo $cell_count; ?> – vybrať CellID</option>
+<?php while ($cell = mysqli_fetch_assoc($cells)) {
+ $description = $cell['cellid'].' ('.$cell['id'].') – '.($cell['address'] ?? '');
+?>
+     <option value="<?php echo (int)$cell['id']; ?>"<?php echo ($cell_loadid === 'on' && (string)$cell_id === (string)$cell['id']) ? ' selected' : ''; ?>><?php echo htmlspecialchars($description, ENT_QUOTES, 'UTF-8'); ?></option>
+<?php } mysqli_stmt_close($stmt); ?>
+    </select>
+   </form>
+  </div>
+<?php } ?>
  </div>
  <div class="toolbar-group" aria-label="Presnosť polohy">
   <a class="filter-link<?php echo $valid === '' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc])); ?>">Všetky polohy</a>
@@ -297,213 +297,13 @@ $marker=$marker.'
   <a class="filter-link<?php echo $valid === 'false' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc,'valid'=>'false'])); ?>">Bez adresy</a>
  </div>
 </div>
-<table align="center" class="details-table" border="1">
-<?php if (($_SESSION["admin"] ?? '') === "admin_ok") { ?>
- <tr>
-  <td align="center">Cells </td>
-  <td align="center">
-   <form action = "?" id="cell_load1">
-   <select id="cell_id" name="cell_id" form="cell_load1" onchange="document.getElementById('cell_load1').submit()">
-<?php
- $tracking_bts_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE mcc = '231' AND mnc = '01' AND technology = 'GSM' order by cellid asc");
- $tracking_bts_db_row = mysqli_num_rows ($tracking_bts_db);
- echo "     <option value=\"\" selected> Total cells ".$tracking_bts_db_row."</option> \n";
- for ($i = 1; $i <= $tracking_bts_db_row; $i++) {
-  $bts_entries = mysqli_fetch_array($tracking_bts_db, MYSQLI_ASSOC);
-  $cid=$bts_entries["id"];
-  $cell_id=$bts_entries["cellid"];
-  $cell_addr=$bts_entries["address"];
-  echo "     <option value=\"".$cid."\"> ".$cell_id." (".$cid.")- ".$cell_addr." </option> \n";
- } ?>
-   </select>
-   <input type="checkbox" id="cell_loadid" name="cell_loadid" form="cell_load1" checked hidden/>
-   </form>
-  </td>
-  <td align="center">
-   <form action = "?" id="cell_load2">
-   <select id="cell_id" name="cell_id" form="cell_load2" onchange="document.getElementById('cell_load2').submit()">
-<?php
- $tracking_bts_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE mcc = '231' AND mnc = '02' AND technology =  'GSM' order by cellid asc");
- $tracking_bts_db_row = mysqli_num_rows ($tracking_bts_db);
- echo "     <option value=\"\" selected> Total cells ".$tracking_bts_db_row."</option>\n";
- for ($i = 1; $i <= $tracking_bts_db_row; $i++) {
-  $bts_entries = mysqli_fetch_array($tracking_bts_db, MYSQLI_ASSOC);
-  $cid=$bts_entries["id"];
-  $cell_id=$bts_entries["cellid"];
-  $cell_addr=$bts_entries["address"];
-  echo "     <option value=\"".$cid."\"> ".$cell_id." (".$cid.")- ".$cell_addr." </option>\n";
- } ?>
-   </select>
-   <input type="checkbox" id="cell_loadid" name="cell_loadid" form="cell_load2" checked hidden/>
-   </form>
-  </td>
-  <td align="center">
-   <form action = "?" id="cell_load3">
-   <select id="cell_id" name="cell_id" form="cell_load3" onchange="document.getElementById('cell_load3').submit()">
-<?php
- $tracking_bts_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE mcc = '231' AND mnc = '03' AND technology = 'GSM' order by cellid asc");
- $tracking_bts_db_row = mysqli_num_rows ($tracking_bts_db);
- echo "     <option value=\"\" selected> Total cells ".$tracking_bts_db_row."</option>\n";
- for ($i = 1; $i <= $tracking_bts_db_row; $i++) {
-  $bts_entries = mysqli_fetch_array($tracking_bts_db, MYSQLI_ASSOC);
-  $cid=$bts_entries["id"];
-  $cell_id=$bts_entries["cellid"];
-  $cell_addr=$bts_entries["address"];
-  echo "     <option value=\"".$cid."\"> ".$cell_id." (".$cid.")- ".$cell_addr." </option>\n";
-} ?>
-   </select>
-   <input type="checkbox" id="cell_loadid" name="cell_loadid" form="cell_load3" checked hidden/>
-   </form>
-  </td>
-  <td align="center">
-   <form action = "?" id="cell_load6">
-   <select id="cell_id" name="cell_id" form="cell_load6" onchange="document.getElementById('cell_load6').submit()">
-<?php
- $tracking_bts_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE mcc = '231' AND mnc = '06' AND technology = 'GSM' order by cellid asc");
- $tracking_bts_db_row = mysqli_num_rows ($tracking_bts_db);
- echo "     <option value=\"\" selected> Total cells ".$tracking_bts_db_row."</option>\n";
- for ($i = 1; $i <= $tracking_bts_db_row; $i++) {
-  $bts_entries = mysqli_fetch_array($tracking_bts_db, MYSQLI_ASSOC);
-  $cid=$bts_entries["id"];
-  $cell_id=$bts_entries["cellid"];
-  $cell_addr=$bts_entries["address"];
-  echo "     <option value=\"".$cid."\"> ".$cell_id." (".$cid.")- ".$cell_addr." </option>\n";
-} ?>
-   </select>
-   <input type="checkbox" id="cell_loadid" name="cell_loadid" form="cell_load6" checked hidden/>
-   </form>
-  </td>
- </tr>
- <tr>
-  <td align="center">All others: </td>
-
-  <td align="center" colspan="4">
-   <form action = "?" id="cell_load7">
-   <select id="cell_id" name="cell_id" form="cell_load7" onchange="document.getElementById('cell_load7').submit()">
-<?php
- $tracking_bts_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE mcc != '231' AND technology = 'GSM' order by cellid asc");
- $tracking_bts_db_row = mysqli_num_rows ($tracking_bts_db);
- echo "     <option value=\"\" selected> Total cells ".$tracking_bts_db_row."</option>\n";
- for ($i = 1; $i <= $tracking_bts_db_row; $i++) {
-  $bts_entries = mysqli_fetch_array($tracking_bts_db, MYSQLI_ASSOC);
-  $cid=$bts_entries["id"];
-  $cell_id=$bts_entries["cellid"];
-  $cell_addr=$bts_entries["address"];
-  $cell_mcc=$bts_entries["mcc"];
-  $cell_mnc=$bts_entries["mnc"];
-
-  echo "     <option value=\"".$cid."\"> ".$cell_id." (".$cid.") - ".$cell_mcc.$cell_mnc." - ".$cell_addr." </option>\n";
-} ?>
-   </select>
-   <input type="checkbox" id="cell_loadid" name="cell_loadid" form="cell_load7" checked hidden/>
-   </form>
-
-
-  </td>
- </tr>
+<div class="status-line">
+ <span><strong>Body:</strong> <?php echo (int)$tracking_list_db_row; ?> (GSM/2G)</span>
+<?php if (($_SESSION["admin"] ?? '') === 'admin_ok') { ?>
+ <a href="/show_on_map.php">Show on map</a>
+ <a href="/list_all.php">List all and update</a>
 <?php } ?>
-
- <tr>
-  <td  align="center">
-<?php
-  if ($_SESSION["admin"] == "admin_ok") { 
-  echo $HTTP.$ip;
- }
-?>
-  </td>
-  <td align="center">
-<?php
-  if ($_SESSION["admin"] == "admin_ok") { ?>
-   <a href="/show_on_map.php"><font size="2" face="Verdana" color="yellow">Show on map</font></a>
-<?php  }
-?>
-  </td>
-  <td align="center">
-   <font color="red"><b>Points:</b></font> <?php echo $tracking_list_db_row;?> (total) - [only GSM/2G]
-  </td>
-  <td align="center">
-   <font color="red"><b>Screen:</b></font>
-   <script type="text/javascript">
-    document.write(window.innerWidth-"50"+"px x ");
-    document.write(window.innerHeight-"200"+"px");
-   </script>
-  </td>
-  <td align="center">
-<?php
-  if ($_SESSION["admin"] == "admin_ok") { ?>
-   <a href="/list_all.php"><font size="2" face="Verdana" color="yellow">List all and update</font></a>
-<?php  }
-?>
-  </td>
- </tr>
-</table>
-
-<?php
-  if ($_SESSION["admin"] == "admin_ok") {
-?>
-<a align="center">
-<form action="?" id="getdate">
- <select id="day" name="day" form="getdate">
-  <option value="01"<?php if ($day == "01") { echo "selected"; } ?><?php if (Date("d") == "01") {echo ">>>"; } ?>> 01 <?php if (Date("d") == "01") {echo "<<<"; } ?></option>
-  <option value="02"<?php if ($day == "02") { echo "selected"; } ?><?php if (Date("d") == "02") {echo ">>>"; } ?>> 02 <?php if (Date("d") == "02") {echo "<<<"; } ?></option>
-  <option value="03"<?php if ($day == "03") { echo "selected"; } ?><?php if (Date("d") == "03") {echo ">>>"; } ?>> 03 <?php if (Date("d") == "03") {echo "<<<"; } ?></option>
-  <option value="04"<?php if ($day == "04") { echo "selected"; } ?><?php if (Date("d") == "04") {echo ">>>"; } ?>> 04 <?php if (Date("d") == "04") {echo "<<<"; } ?></option>
-  <option value="05"<?php if ($day == "05") { echo "selected"; } ?><?php if (Date("d") == "05") {echo ">>>"; } ?>> 05 <?php if (Date("d") == "05") {echo "<<<"; } ?></option>
-  <option value="06"<?php if ($day == "06") { echo "selected"; } ?><?php if (Date("d") == "06") {echo ">>>"; } ?>> 06 <?php if (Date("d") == "06") {echo "<<<"; } ?></option>
-  <option value="07"<?php if ($day == "07") { echo "selected"; } ?><?php if (Date("d") == "07") {echo ">>>"; } ?>> 07 <?php if (Date("d") == "07") {echo "<<<"; } ?></option>
-  <option value="08"<?php if ($day == "08") { echo "selected"; } ?><?php if (Date("d") == "08") {echo ">>>"; } ?>> 08 <?php if (Date("d") == "08") {echo "<<<"; } ?></option>
-  <option value="09"<?php if ($day == "09") { echo "selected"; } ?><?php if (Date("d") == "09") {echo ">>>"; } ?>> 09 <?php if (Date("d") == "09") {echo "<<<"; } ?></option>
-  <option value="10"<?php if ($day == "10") { echo "selected"; } ?><?php if (Date("d") == "10") {echo ">>>"; } ?>> 10 <?php if (Date("d") == "10") {echo "<<<"; } ?></option>
-  <option value="11"<?php if ($day == "11") { echo "selected"; } ?><?php if (Date("d") == "11") {echo ">>>"; } ?>> 11 <?php if (Date("d") == "11") {echo "<<<"; } ?></option>
-  <option value="12"<?php if ($day == "12") { echo "selected"; } ?><?php if (Date("d") == "12") {echo ">>>"; } ?>> 12 <?php if (Date("d") == "12") {echo "<<<"; } ?></option>
-  <option value="13"<?php if ($day == "13") { echo "selected"; } ?><?php if (Date("d") == "13") {echo ">>>"; } ?>> 13 <?php if (Date("d") == "13") {echo "<<<"; } ?></option>
-  <option value="14"<?php if ($day == "14") { echo "selected"; } ?><?php if (Date("d") == "14") {echo ">>>"; } ?>> 14 <?php if (Date("d") == "14") {echo "<<<"; } ?></option>
-  <option value="15"<?php if ($day == "15") { echo "selected"; } ?><?php if (Date("d") == "15") {echo ">>>"; } ?>> 15 <?php if (Date("d") == "15") {echo "<<<"; } ?></option>
-  <option value="16"<?php if ($day == "16") { echo "selected"; } ?><?php if (Date("d") == "16") {echo ">>>"; } ?>> 16 <?php if (Date("d") == "16") {echo "<<<"; } ?></option>
-  <option value="17"<?php if ($day == "17") { echo "selected"; } ?><?php if (Date("d") == "17") {echo ">>>"; } ?>> 17 <?php if (Date("d") == "17") {echo "<<<"; } ?></option>
-  <option value="18"<?php if ($day == "18") { echo "selected"; } ?><?php if (Date("d") == "18") {echo ">>>"; } ?>> 18 <?php if (Date("d") == "18") {echo "<<<"; } ?></option>
-  <option value="19"<?php if ($day == "19") { echo "selected"; } ?><?php if (Date("d") == "19") {echo ">>>"; } ?>> 19 <?php if (Date("d") == "19") {echo "<<<"; } ?></option>
-  <option value="20"<?php if ($day == "20") { echo "selected"; } ?><?php if (Date("d") == "20") {echo ">>>"; } ?>> 20 <?php if (Date("d") == "20") {echo "<<<"; } ?></option>
-  <option value="21"<?php if ($day == "21") { echo "selected"; } ?><?php if (Date("d") == "21") {echo ">>>"; } ?>> 21 <?php if (Date("d") == "21") {echo "<<<"; } ?></option>
-  <option value="22"<?php if ($day == "22") { echo "selected"; } ?><?php if (Date("d") == "22") {echo ">>>"; } ?>> 22 <?php if (Date("d") == "22") {echo "<<<"; } ?></option>
-  <option value="23"<?php if ($day == "23") { echo "selected"; } ?><?php if (Date("d") == "23") {echo ">>>"; } ?>> 23 <?php if (Date("d") == "23") {echo "<<<"; } ?></option>
-  <option value="24"<?php if ($day == "24") { echo "selected"; } ?><?php if (Date("d") == "24") {echo ">>>"; } ?>> 24 <?php if (Date("d") == "24") {echo "<<<"; } ?></option>
-  <option value="25"<?php if ($day == "25") { echo "selected"; } ?><?php if (Date("d") == "25") {echo ">>>"; } ?>> 25 <?php if (Date("d") == "25") {echo "<<<"; } ?></option>
-  <option value="26"<?php if ($day == "26") { echo "selected"; } ?><?php if (Date("d") == "26") {echo ">>>"; } ?>> 26 <?php if (Date("d") == "26") {echo "<<<"; } ?></option>
-  <option value="27"<?php if ($day == "27") { echo "selected"; } ?><?php if (Date("d") == "27") {echo ">>>"; } ?>> 27 <?php if (Date("d") == "27") {echo "<<<"; } ?></option>
-  <option value="28"<?php if ($day == "28") { echo "selected"; } ?><?php if (Date("d") == "28") {echo ">>>"; } ?>> 28 <?php if (Date("d") == "28") {echo "<<<"; } ?></option>
-  <option value="29"<?php if ($day == "29") { echo "selected"; } ?><?php if (Date("d") == "29") {echo ">>>"; } ?>> 29 <?php if (Date("d") == "29") {echo "<<<"; } ?></option>
-  <option value="30"<?php if ($day == "30") { echo "selected"; } ?><?php if (Date("d") == "30") {echo ">>>"; } ?>> 30 <?php if (Date("d") == "30") {echo "<<<"; } ?></option>
-  <option value="31"<?php if ($day == "31") { echo "selected"; } ?><?php if (Date("d") == "31") {echo ">>>"; } ?>> 31 <?php if (Date("d") == "31") {echo "<<<"; } ?></option>
- </select>
- <select id="month" name="month" form="getdate">
-  <option value="01"<?php if ($month == "01") { echo "selected"; } ?><?php if (Date("m") == "01") {echo ">>>"; } ?>> Januar    <?php if (Date("m") == "01") {echo "<<<"; } ?></option>
-  <option value="02"<?php if ($month == "02") { echo "selected"; } ?><?php if (Date("m") == "02") {echo ">>>"; } ?>> Februar   <?php if (Date("m") == "02") {echo "<<<"; } ?></option>
-  <option value="03"<?php if ($month == "03") { echo "selected"; } ?><?php if (Date("m") == "03") {echo ">>>"; } ?>> Marec     <?php if (Date("m") == "03") {echo "<<<"; } ?></option>
-  <option value="04"<?php if ($month == "04") { echo "selected"; } ?><?php if (Date("m") == "04") {echo ">>>"; } ?>> April     <?php if (Date("m") == "04") {echo "<<<"; } ?></option>
-  <option value="05"<?php if ($month == "05") { echo "selected"; } ?><?php if (Date("m") == "05") {echo ">>>"; } ?>> Maj       <?php if (Date("m") == "05") {echo "<<<"; } ?></option>
-  <option value="06"<?php if ($month == "06") { echo "selected"; } ?><?php if (Date("m") == "06") {echo ">>>"; } ?>> Jun       <?php if (Date("m") == "06") {echo "<<<"; } ?></option>
-  <option value="07"<?php if ($month == "07") { echo "selected"; } ?><?php if (Date("m") == "07") {echo ">>>"; } ?>> Jul       <?php if (Date("m") == "07") {echo "<<<"; } ?></option>
-  <option value="08"<?php if ($month == "08") { echo "selected"; } ?><?php if (Date("m") == "08") {echo ">>>"; } ?>> August    <?php if (Date("m") == "08") {echo "<<<"; } ?></option>
-  <option value="09"<?php if ($month == "09") { echo "selected"; } ?><?php if (Date("m") == "09") {echo ">>>"; } ?>> September <?php if (Date("m") == "09") {echo "<<<"; } ?></option>
-  <option value="10"<?php if ($month == "10") { echo "selected"; } ?><?php if (Date("m") == "10") {echo ">>>"; } ?>> Oktober   <?php if (Date("m") == "10") {echo "<<<"; } ?></option>
-  <option value="11"<?php if ($month == "11") { echo "selected"; } ?><?php if (Date("m") == "11") {echo ">>>"; } ?>> November  <?php if (Date("m") == "11") {echo "<<<"; } ?></option>
-  <option value="12"<?php if ($month == "12") { echo "selected"; } ?><?php if (Date("m") == "12") {echo ">>>"; } ?>> December  <?php if (Date("m") == "12") {echo "<<<"; } ?></option>
- </select>
- <select id="year" name="year" form="getdate">
-  <option value="2026"<?php if ($year == "2026") { echo "selected"; } ?><?php if (Date("Y") == "2026") {echo ">>>"; } ?>> 2026 <?php if (Date("Y") == "2026") {echo "<<<"; } ?></option>
-  <option value="2025"<?php if ($year == "2025") { echo "selected"; } ?><?php if (Date("Y") == "2025") {echo ">>>"; } ?>> 2025 <?php if (Date("Y") == "2025") {echo "<<<"; } ?></option>
-  <option value="2024"<?php if ($year == "2024") { echo "selected"; } ?><?php if (Date("Y") == "2024") {echo ">>>"; } ?>> 2024 <?php if (Date("Y") == "2024") {echo "<<<"; } ?></option>
-  <option value="2023"<?php if ($year == "2023") { echo "selected"; } ?><?php if (Date("Y") == "2023") {echo ">>>"; } ?>> 2023 <?php if (Date("Y") == "2023") {echo "<<<"; } ?></option>
- </select>
- <input type="checkbox" id="today" name="today" form="getdate" checked hidden/>
- <input type="submit">
- </form>
- <form action="?" id="lasthr">
- <input type="checkbox" id="lasthr" name="lasthr" form="lasthr" checked hidden/>
- <input type="submit">
- </form>
-<?php } ?>
+</div>
 
 <table id="map" width="100">
  <td id="maph" height="100" >
@@ -540,9 +340,7 @@ echo $marker;
    fillColor: latLong[i][4],
    fillOpacity: 1,
    radius: 1
-<?php if ($today=='on') { ?>  }).addTo(map).bindPopup(latLong[i][0],{autoClose: false, closeOnClick: false}); <?php };?>
-<?php if (($today=='') AND ($lasthr!='on')) { ?>  }).addTo(map).bindPopup(latLong[i][0]); <?php };?>
-<?php if (($today=='') AND ($lasthr=='on')) { ?>  }).addTo(map).bindPopup(latLong[i][0],{autoClose: false, closeOnClick: false}).openPopup(); <?php };?>
+  }).addTo(map).bindPopup(latLong[i][0]);
  }
 <?php }?>
 </script>
