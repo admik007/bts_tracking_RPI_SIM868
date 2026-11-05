@@ -1,0 +1,17 @@
+[Unit]
+Description=BTS Tracking MQTT to MariaDB subscriber
+Wants=network-online.target
+After=network-online.target mariadb.service mosquitto.service
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/bts_tracking_RPI_SIM868/server/mqtt_bts_connect.conf
+WorkingDirectory=/opt/bts_tracking_RPI_SIM868/server
+ExecStart=/usr/bin/python3 /opt/bts_tracking_RPI_SIM868/server/mqtt_bts_tracking.py
+Restart=always
+RestartSec=5
+User=root
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
