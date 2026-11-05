@@ -110,13 +110,55 @@ $search = trim((string)($_GET['q'] ?? ''));
 $search = substr($search, 0, 80);
 $page = max(1, min(10000, (int)($_GET['page'] ?? 1)));
 $perPage = 60;
+$auditMode = ($_GET['view'] ?? '') === 'audit';
+$auditRows = [];
+$auditError = '';
+$auditPage = max(1, min(1000, (int)($_GET['audit_page'] ?? 1)));
+$auditLimit = 50;
 $selected = null;
 $records = [];
 $observations = [];
 $observationError = '';
 $observationCap = 1500;
 if ($authenticated) {
-    if ($id > 0) {
+    // Load duplicate-LAC audit only when explicitly requested to avoid slowing ordinary admin pages.
+    if ($auditMode) {
+        try {
+            $auditOffset = ($auditPage - 1) * $auditLimit;
+            $stmt = $spojenie->prepare(
+                "SELECT g.mcc, g.mnc, g.cellid, g.lac_count, g.sample_count,
+                        g.valid_gps_count, g.lac_details,
+                        b.id AS bts_id, b.lac AS stored_lac, b.address AS stored_address
+                 FROM (
+                   SELECT technology, mcc, mnc, cellid,
+                          COUNT(DISTINCT lac) AS lac_count,
+                          COUNT(*) AS sample_count,
+                          SUM(gps_valid = 1 AND lat IS NOT NULL AND lon IS NOT NULL
+                              AND lat BETWEEN -90 AND 90 AND lon BETWEEN -180 AND 180
+                              AND NOT (lat = 0 AND lon = 0)) AS valid_gps_count,
+                          GROUP_CONCAT(DISTINCT CAST(lac AS CHAR)
+                              ORDER BY lac SEPARATOR ', ') AS lac_details
+                   FROM bts_observations
+                   WHERE technology = 'GSM' AND mcc = '231' AND lac IS NOT NULL
+                   GROUP BY technology, mcc, mnc, cellid
+                   HAVING COUNT(DISTINCT lac) > 1
+                 ) AS g
+                 LEFT JOIN $MySQL_table AS b
+                   ON b.technology = g.technology AND b.mcc = g.mcc
+                  AND b.mnc = g.mnc AND b.cellid = g.cellid
+                 ORDER BY g.lac_count DESC, g.sample_count DESC, g.mnc, g.cellid
+                 LIMIT ? OFFSET ?"
+            );
+            $stmt->bind_param('ii', $auditLimit, $auditOffset);
+            $stmt->execute();
+            $auditRows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt->close();
+        } catch (mysqli_sql_exception $e) {
+            error_log('BTS LAC audit failed: ' . $e->getMessage());
+            $auditError = 'Kontrolu sa nepodarilo načítať. Over dostupnosť tabuľky bts_observations.';
+        }
+    }
+    if ($id > 0 && !$auditMode) {
         $stmt = $spojenie->prepare("SELECT id, mcc, mnc, cellid, lac, lat, lon, address, alt, time FROM $MySQL_table WHERE id = ? AND technology = 'GSM' LIMIT 1");
         $stmt->bind_param('i', $id);
         $stmt->execute();
@@ -161,6 +203,7 @@ if ($authenticated) {
             }
         }
     }
+    if (!$auditMode) {
     $where = "technology = 'GSM' AND mcc = '231'";
     if ($operator !== '') $where .= " AND mnc = '" . $operator . "'";
     if ($status === 'mapped') $where .= " AND address IS NOT NULL AND address <> '' AND address NOT LIKE '%no info%'";
@@ -179,6 +222,7 @@ if ($authenticated) {
     $stmt->execute();
     $records = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
+    }
 }
 function page_href(int $page, string $operator, string $status, string $search): string {
     return '/admin.php?' . http_build_query(array_filter(['page'=>$page, 'mnc'=>$operator, 'status'=>$status, 'q'=>$search], static fn($v)=>$v !== ''));
@@ -246,6 +290,39 @@ tr:hover {background:#26323f}
 <label>Admin heslo <input type="password" name="password" required autocomplete="current-password"></label>
 <p><button type="submit">Prihlásiť</button></p>
 </form></div>
+<?php else: ?>
+<div class="card">
+<a href="/admin.php">Zoznam BTS</a> &nbsp; · &nbsp;
+<a href="/admin.php?view=audit">Kontrola CellID / LAC</a>
+</div>
+<?php if ($auditMode): ?>
+<div class="card">
+<h2>Kontrola opakovaných CellID v rôznych LAC</h2>
+<p class="muted">Report vyhľadáva bunky s rovnakou kombináciou GSM + MCC + MNC + CellID, ktoré boli pozorované s viac než jedným LAC.
+Viaceré LAC sú <strong>signálom na preverenie</strong>, nie dôkazom chybnej polohy. Merania nemusia byť geograficky nezávislé a môžu obsahovať chyby modemu.</p>
+<?php if ($auditError !== ''): ?><p class="error"><?= esc($auditError) ?></p><?php endif; ?>
+<div style="overflow-x:auto"><table>
+<thead><tr><th>Operátor</th><th>CellID</th><th>Počet LAC</th><th>Namerené LAC</th><th>Všetky merania</th><th>Platné GPS</th><th>Uložený LAC</th><th>Adresa BTS</th><th></th></tr></thead>
+<tbody>
+<?php foreach ($auditRows as $audit): ?>
+<tr>
+<td><?= esc($audit['mcc'].$audit['mnc']) ?></td>
+<td><?= esc($audit['cellid']) ?></td>
+<td><?= (int)$audit['lac_count'] ?></td>
+<td><?= esc($audit['lac_details']) ?></td>
+<td><?= (int)$audit['sample_count'] ?></td>
+<td><?= (int)$audit['valid_gps_count'] ?></td>
+<td><?= esc($audit['stored_lac'] ?? '—') ?></td>
+<td><?= esc($audit['stored_address'] ?? 'Bez záznamu') ?></td>
+<td><?php if (!empty($audit['bts_id'])): ?><a href="/admin.php?id=<?= (int)$audit['bts_id'] ?>">Zobraziť GPS</a><?php else: ?>—<?php endif; ?></td>
+</tr>
+<?php endforeach; ?>
+</tbody></table></div>
+<?php if (!$auditRows && !$auditError): ?><p>Žiadne ďalšie podozrivé kombinácie CellID/LAC.</p><?php endif; ?>
+<p class="muted">Strana <?= $auditPage ?> · maximálne <?= $auditLimit ?> výsledkov. Report sa vypočíta až po otvorení tejto stránky; nemení údaje v databáze.</p>
+<?php if ($auditPage > 1): ?><a href="/admin.php?view=audit&amp;audit_page=<?= $auditPage - 1 ?>">Predchádzajúca</a> &nbsp;<?php endif; ?>
+<?php if (count($auditRows) === $auditLimit): ?><a href="/admin.php?view=audit&amp;audit_page=<?= $auditPage + 1 ?>">Ďalšia</a><?php endif; ?>
+</div>
 <?php else: ?>
 <div class="card">
 <form class="filters" method="get" action="/admin.php">
@@ -381,7 +458,8 @@ tr:hover {background:#26323f}
 <?php endif; ?>
 </section>
 </div>
-<?php endif; ?>
+<?php endif; // audit or normal list ?>
+<?php endif; // authenticated ?>
 </main>
 </body>
 </html>
