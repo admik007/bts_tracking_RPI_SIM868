@@ -235,27 +235,22 @@ $marker=$marker.'
 <style>
  body { margin: 0; background: #101418; color: #e7edf3; font: 14px Arial, sans-serif; }
  .toolbar { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px; padding: 14px 18px; background: #1b222b; border-bottom: 1px solid #374353; }
- .brand { font-size: 18px; margin-right: 10px; }
- .toolbar-group { display: flex; flex-wrap: wrap; gap: 6px; }
+ .toolbar-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; width: 100%; }
  .filter-link { display: inline-block; padding: 8px 11px; border-radius: 6px; border: 1px solid #4a5869; text-decoration: none; color: #e7edf3; white-space: nowrap; }
  .filter-link:hover, .filter-link.active { background: #364559; border-color: #aebed1; }
  .orange { border-left: 4px solid orange; } .magenta { border-left: 4px solid magenta; }
  .green { border-left: 4px solid #29ad50; } .blue { border-left: 4px solid dodgerblue; }
- .operator-grid { display: grid; grid-template-columns: repeat(4, minmax(165px, 1fr)); gap: 10px; width: 100%; max-width: 1050px; }
+ .operator-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; width: 100%; max-width: 1050px; }
  .operator-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
  .operator-panel .filter-link { text-align: center; font-weight: 600; }
  .cell-select { width: 100%; min-width: 0; padding: 8px; border-radius: 6px; border: 1px solid #526070; background: #121920; color: #e7edf3; }
- .status-line { display: flex; justify-content: center; align-items: center; gap: 18px; flex-wrap: wrap; padding: 8px; }
  @media (max-width: 740px) { .operator-grid { grid-template-columns: repeat(2, minmax(145px, 1fr)); } }
  @media (max-width: 370px) { .operator-grid { grid-template-columns: 1fr; } }
  #map { margin: 0 auto; }
- @media (max-width: 700px) { .toolbar { justify-content: flex-start; } .brand { flex-basis: 100%; } }
 </style>
 </head>
 <body bgcolor="black" text="white">
 <div class="toolbar">
- <strong class="brand">BTS Tracking</strong>
- <a class="filter-link<?php echo $mnc === '' && $cell_loadid !== 'on' ? ' active' : ''; ?>" href="?">Všetci operátori</a>
  <div class="operator-grid">
 <?php
 $operators = [
@@ -291,20 +286,13 @@ foreach ($operators as $op) {
   </div>
 <?php } ?>
  </div>
- <div class="toolbar-group" aria-label="Presnosť polohy">
+ <div class="toolbar-group" aria-label="Filtre mapy">
+  <a class="filter-link<?php echo $mnc === '' && $cell_loadid !== 'on' ? ' active' : ''; ?>" href="?">Všetci operátori</a>
   <a class="filter-link<?php echo $valid === '' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc])); ?>">Všetky polohy</a>
   <a class="filter-link<?php echo $valid === 'true' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc,'valid'=>'true'])); ?>">S adresou</a>
   <a class="filter-link<?php echo $valid === 'false' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc,'valid'=>'false'])); ?>">Bez adresy</a>
  </div>
 </div>
-<div class="status-line">
- <span><strong>Body:</strong> <?php echo (int)$tracking_list_db_row; ?> (GSM/2G)</span>
-<?php if (($_SESSION["admin"] ?? '') === 'admin_ok') { ?>
- <a href="/show_on_map.php">Show on map</a>
- <a href="/list_all.php">List all and update</a>
-<?php } ?>
-</div>
-
 <table id="map" width="100">
  <td id="maph" height="100" >
  </td>
