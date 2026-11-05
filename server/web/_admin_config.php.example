@@ -1,0 +1,4 @@
+<?php
+// Copy this file to _admin_config.php and replace the placeholder with
+// a password_hash() result. Never commit the real configuration file.
+define('BTS_ADMIN_PASSWORD_HASH', 'PASTE_PASSWORD_HASH_HERE');
