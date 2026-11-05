@@ -247,6 +247,7 @@ $marker=$marker.'
  @media (max-width: 740px) { .operator-grid { grid-template-columns: repeat(2, minmax(145px, 1fr)); } }
  @media (max-width: 370px) { .operator-grid { grid-template-columns: 1fr; } }
  #map { margin: 0 auto; }
+ .load-time { position: fixed; left: 12px; bottom: 12px; z-index: 1100; padding: 6px 10px; border-radius: 6px; background: rgba(16,20,24,.88); color: #e7edf3; font-size: 12px; pointer-events: none; }
 </style>
 </head>
 <body bgcolor="black" text="white">
@@ -293,6 +294,7 @@ foreach ($operators as $op) {
   <a class="filter-link<?php echo $valid === 'false' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc,'valid'=>'false'])); ?>">Bez adresy</a>
  </div>
 </div>
+<div id="load-time" class="load-time" aria-live="polite">Načítavam...</div>
 <table id="map" width="100">
  <td id="maph" height="100" >
  </td>
@@ -331,6 +333,16 @@ echo $marker;
   }).addTo(map).bindPopup(latLong[i][0]);
  }
 <?php }?>
+</script>
+<script>
+ // Browser navigation timing: includes HTML, scripts, styles and load-blocking resources.
+ window.addEventListener('load', function () {
+  var element = document.getElementById('load-time');
+  if (!element) return;
+  var navigation = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+  var duration = navigation ? navigation.duration : performance.now();
+  element.textContent = 'Načítanie stránky: ' + (duration / 1000).toFixed(2) + ' s';
+ });
 </script>
 
 <?php
