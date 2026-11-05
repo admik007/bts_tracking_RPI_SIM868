@@ -17,7 +17,7 @@ if (empty($_GET["cell_id"])) $cell_id='';
 if(isset($_GET["cell_id"])) $cell_id=$_GET["cell_id"];
 
 if (empty($_GET["cid"])) $cid='';
-if(isset($_GET["cid"])) $cid=$_GET["ceid"];
+if(isset($_GET["cid"])) $cid=$_GET["cid"];
 
 if (empty($_GET["cell_loadid"])) $cell_loadid='';
 if(isset($_GET["cell_loadid"])) $cell_loadid=$_GET["cell_loadid"];
@@ -46,7 +46,7 @@ if(isset($_GET["day"])) $day=$_GET["day"];
 if (empty($_GET["hour"])) $hour=Date("H");
 if(isset($_GET["hour"])) $hour=$_GET["hour"];
 
-if (empty($_GET["min"])) $min=Date("S");
+if (empty($_GET["min"])) $min=Date("i");
 if(isset($_GET["min"])) $min=$_GET["min"];
 
 
@@ -76,39 +76,36 @@ if (($ip == $strba) OR ($ip == '176.10.42.177') OR ($ip == '94.130.228.164') OR 
 
 @include"_config.php";
 
-if ($mnc != '') {
- $FILTER=" AND mnc='$mnc'";
-} else {
- $FILTER="";
+// Only allow supported operator and location-status filters.
+$mnc = in_array($mnc, ['01', '02', '03', '06'], true) ? $mnc : '';
+$valid = in_array($valid, ['true', 'false'], true) ? $valid : '';
+$FILTER = " AND technology = 'GSM'";
+if ($mnc !== '') {
+ $FILTER .= " AND mcc = '231' AND mnc = '$mnc'";
 }
-
-
-if ($valid == 'false') {
- $FILTER=$FILTER." AND address like '%no info%'";
-} 
-if ($valid == 'true') {
-  $FILTER=$FILTER." AND technology = 'GSM' AND address not like '%no info%'";
-} 
-if ($valid == '') {
- $FILTER=$FILTER." AND technology = 'GSM'";
+if ($valid === 'false') {
+ $FILTER .= " AND (address IS NULL OR address = '' OR address LIKE '%no info%')";
+} elseif ($valid === 'true') {
+ $FILTER .= " AND address IS NOT NULL AND address <> '' AND address NOT LIKE '%no info%'";
 }
-
-
-if ($today == 'on') {
- $FILTER=$FILTER." AND time like '".$year."-".$month."-".$day."%'";
+$year  = preg_match('/^[0-9]{4}$/', (string)$year) ? $year : date('Y');
+$month = preg_match('/^(0[1-9]|1[0-2])$/', (string)$month) ? $month : date('m');
+$day   = preg_match('/^(0[1-9]|[12][0-9]|3[01])$/', (string)$day) ? $day : date('d');
+if ($today === 'on') {
+ $FILTER .= " AND time LIKE '".$year."-".$month."-".$day."%'";
 }
-
-if ($lasthr == 'on') {
- $FILTER=$FILTER." AND time like '".$year."-".$month."-".$day."T00%'";
+if ($lasthr === 'on') {
+ $FILTER .= " AND time LIKE '".$year."-".$month."-".$day."T00%'";
+}
+if ($cell_loadid === 'on') {
+ $cell_id = filter_var($cell_id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
 }
 
 if ($cell_loadid == 'on') {
  $FILTER=$FILTER." AND id = '".$cell_id."'";
- $lat=$entries['lat'];
- $lon=$entries['lon'];
+ $lat="48.745323";
+ $lon="19.550171";
  $zooma='11';
- if($lat == 0.000000) $lat="48.745323";
- if($lon == 0.000000) $lon="19.550171";
 } else {
  $lat="48.745323";
  $lon="19.550171";
@@ -269,84 +266,39 @@ $marker=$marker.'
  <link rel="stylesheet" href="leaflet.css">
  <script type="text/javascript" src="leaflet.js"></script>
 
+<style>
+ body { margin: 0; background: #101418; color: #e7edf3; font: 14px Arial, sans-serif; }
+ .toolbar { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px; padding: 14px 18px; background: #1b222b; border-bottom: 1px solid #374353; }
+ .brand { font-size: 18px; margin-right: 10px; }
+ .toolbar-group { display: flex; flex-wrap: wrap; gap: 6px; }
+ .filter-link { display: inline-block; padding: 8px 11px; border-radius: 6px; border: 1px solid #4a5869; text-decoration: none; color: #e7edf3; white-space: nowrap; }
+ .filter-link:hover, .filter-link.active { background: #364559; border-color: #aebed1; }
+ .orange { border-left: 4px solid orange; } .magenta { border-left: 4px solid magenta; }
+ .green { border-left: 4px solid #29ad50; } .blue { border-left: 4px solid dodgerblue; }
+ .details-table { margin: 8px auto; border-collapse: collapse; max-width: 100%; }
+ .details-table td { padding: 6px; }
+ #map { margin: 0 auto; }
+ @media (max-width: 700px) { .toolbar { justify-content: flex-start; } .brand { flex-basis: 100%; } }
+</style>
 </head>
 <body bgcolor="black" text="white">
-<table align="center" border="1">
- <tr>
-  <td align="center">
-<?php
-  if ($_SESSION["admin"] == "admin_ok") {
- echo $_SESSION["admin"];
-}?>
- </td>
-  <td align="center">
-   <a href="?mnc=01"><font size="2" face="Verdana" color="Orange">=[231 01 - Orange]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=02"><font size="2" face="Verdana" color="Magenta">=[231 02 - T-Mobile]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=03"><font size="2" face="Verdana" color="Green">=[231 03 - 4KA]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=06"><font size="2" face="Verdana" color="DodgerBlue">=[231 06 - O2SK]=</font></a>
-  </td>
- </tr>
-
-<?php
-  if ($_SESSION["admin"] == "admin_ok") {
-?>
- <tr>
-  <td align="center">No address
-  </td>
-  <td align="center">
-   <a href="?mnc=01&valid=false"><font size="2" face="Verdana" color="Orange">=[231 01 - Orange]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=02&valid=false"><font size="2" face="Verdana" color="Magenta">=[231 02 - T-Mobile]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=03&valid=false"><font size="2" face="Verdana" color="Green">=[231 03 - 4KA]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=06&valid=false"><font size="2" face="Verdana" color="DodgerBlue">=[231 06 - O2SK]=</font></a>
-  </td>
- </tr>
-
- <tr>
-  <td align="center">Valid address
-  </td>
-  <td align="center">
-   <a href="?mnc=01&valid=true"><font size="2" face="Verdana" color="Orange">=[231 01 - Orange]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=02&valid=true"><font size="2" face="Verdana" color="Magenta">=[231 02 - T-Mobile]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=03&valid=true"><font size="2" face="Verdana" color="Green">=[231 03 - 4KA]=</font></a>&nbsp;&nbsp;&nbsp;&nbsp;
-  </td>
-  <td align="center">
-   <a href="?mnc=06&valid=true"><font size="2" face="Verdana" color="DodgerBlue">=[231 06 - O2SK]=</font></a>
-  </td>
- </tr>
-
- <tr>
-  <td align="center">List ALL
-  </td>
-  <td align="center">
-   <a href="/list_all.php?mnc=01"><font size="2" face="Verdana" color="yellow">List all</font></a>
-  </td>
-  <td align="center">
-   <a href="/list_all.php?mnc=02"><font size="2" face="Verdana" color="yellow">List all</font></a>
-  </td>
-  <td align="center">
-   <a href="/list_all.php?mnc=03"><font size="2" face="Verdana" color="yellow">List all</font></a>
-  </td>
-  <td align="center">
-   <a href="/list_all.php?mnc=06"><font size="2" face="Verdana" color="yellow">List all</font></a>
-  </td>
- </tr>
-
+<div class="toolbar">
+ <strong class="brand">BTS Tracking</strong>
+ <div class="toolbar-group" aria-label="Filter operatora">
+  <a class="filter-link<?php echo $mnc === '' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['valid'=>$valid])); ?>">Všetci</a>
+  <a class="filter-link orange<?php echo $mnc === '01' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>'01','valid'=>$valid])); ?>">Orange</a>
+  <a class="filter-link magenta<?php echo $mnc === '02' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>'02','valid'=>$valid])); ?>">Telekom</a>
+  <a class="filter-link green<?php echo $mnc === '03' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>'03','valid'=>$valid])); ?>">4ka</a>
+  <a class="filter-link blue<?php echo $mnc === '06' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>'06','valid'=>$valid])); ?>">O2</a>
+ </div>
+ <div class="toolbar-group" aria-label="Presnosť polohy">
+  <a class="filter-link<?php echo $valid === '' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc])); ?>">Všetky polohy</a>
+  <a class="filter-link<?php echo $valid === 'true' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc,'valid'=>'true'])); ?>">S adresou</a>
+  <a class="filter-link<?php echo $valid === 'false' ? ' active' : ''; ?>" href="?<?php echo http_build_query(array_filter(['mnc'=>$mnc,'valid'=>'false'])); ?>">Bez adresy</a>
+ </div>
+</div>
+<table align="center" class="details-table" border="1">
+<?php if (($_SESSION["admin"] ?? '') === "admin_ok") { ?>
  <tr>
   <td align="center">Cells </td>
   <td align="center">
