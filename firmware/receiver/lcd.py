@@ -220,9 +220,31 @@ class StatusLCD:
         for idx, cells in enumerate(senders.values()):
             if idx >= 3:
                 break
-            operator, cid = cells
+            operator, cid = cells[:2]
+            # New receiver state carries a monotonic arrival timestamp.
+            # Older two-field tuples can still render while upgrading.
+            last_seen = cells[2] if len(cells) > 2 else None
+            active = (last_seen is not None and
+                      0 <= time.ticks_diff(time.ticks_ms(), last_seen) < 30000)
+            y = 61 + idx * 13
             row = "{} {} {}".format(idx + 1, operator, cid)
-            lcd.text(row[:16], 2, 61 + idx * 13, lcd.YELLOW)
+            lcd.text(row[:14], 2, y, lcd.YELLOW)
+            # Reserve rightmost 9 px for a 7x7 green ring or red X.
+            cx, cy = 121, y + 3
+            color = lcd.GREEN if active else lcd.RED
+            if active:
+                for dx, dy in ((-1, -3), (0, -3), (1, -3),
+                               (-2, -2), (2, -2),
+                               (-3, -1), (3, -1),
+                               (-3, 0), (3, 0),
+                               (-3, 1), (3, 1),
+                               (-2, 2), (2, 2),
+                               (-1, 3), (0, 3), (1, 3)):
+                    lcd.pixel(cx + dx, cy + dy, color)
+            else:
+                for offset in range(-3, 4):
+                    lcd.pixel(cx + offset, cy + offset, color)
+                    lcd.pixel(cx + offset, cy - offset, color)
         lcd.text(state[:16], 2, 112,
                  lcd.GREEN if sd_ok else lcd.RED)
         lcd.show()
