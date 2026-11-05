@@ -112,6 +112,9 @@ $page = max(1, min(10000, (int)($_GET['page'] ?? 1)));
 $perPage = 60;
 $selected = null;
 $records = [];
+$observations = [];
+$observationError = '';
+$observationCap = 1500;
 if ($authenticated) {
     if ($id > 0) {
         $stmt = $spojenie->prepare("SELECT id, mcc, mnc, cellid, lac, lat, lon, address, alt, time FROM $MySQL_table WHERE id = ? AND technology = 'GSM' LIMIT 1");
@@ -119,6 +122,44 @@ if ($authenticated) {
         $stmt->execute();
         $selected = $stmt->get_result()->fetch_assoc() ?: null;
         $stmt->close();
+        if ($selected) {
+            // Evidence only: GPS receiver location != cell tower position.
+            // Match full cell identity; never mix records from different operators.
+            try {
+                $stmt = $spojenie->prepare(
+                    "SELECT lat, lon, observed_at, lac, bsic, csq, sat, device
+                     FROM bts_observations
+                     WHERE technology = ? AND mcc = ? AND mnc = ? AND cellid = ?
+                       AND gps_valid = 1 AND lat IS NOT NULL AND lon IS NOT NULL
+                       AND lat BETWEEN -90 AND 90 AND lon BETWEEN -180 AND 180
+                       AND NOT (lat = 0 AND lon = 0)
+                     ORDER BY observed_at DESC LIMIT ?"
+                );
+                $tech = 'GSM';
+                $obsMcc = (string)$selected['mcc'];
+                $obsMnc = (string)$selected['mnc'];
+                $obsCell = (string)$selected['cellid'];
+                $stmt->bind_param('ssssi', $tech, $obsMcc, $obsMnc, $obsCell, $observationCap);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                while ($row = $result->fetch_assoc()) {
+                    $observations[] = [
+                        (float)$row['lat'], (float)$row['lon'],
+                        (string)($row['observed_at'] ?? ''),
+                        (string)($row['lac'] ?? ''),
+                        (string)($row['bsic'] ?? ''),
+                        (string)($row['csq'] ?? ''),
+                        (string)($row['sat'] ?? ''),
+                        (string)($row['device'] ?? '')
+                    ];
+                }
+                $stmt->close();
+            } catch (mysqli_sql_exception $e) {
+                // In case the observations table has not yet been installed, keep the admin usable.
+                error_log('BTS admin observation lookup failed: ' . $e->getMessage());
+                $observationError = 'Merania sa nepodarilo načítať. Skontroluj tabuľku bts_observations.';
+            }
+        }
     }
     $where = "technology = 'GSM' AND mcc = '231'";
     if ($operator !== '') $where .= " AND mnc = '" . $operator . "'";
@@ -172,6 +213,13 @@ tr:hover {background:#26323f}
 .error {color:#ffb4ad}
 .success {color:#91e1b3}
 #admin-map {height:340px;border-radius:8px;margin:12px 0}
+.map-tools {display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0}
+.map-tools label {display:inline-flex;flex-direction:row;align-items:center;gap:7px}
+.map-tools input {width:18px;height:18px}
+.map-tools button {padding:7px 10px}
+.evidence-note {font-size:13px;color:#abb8c5}
+.observation-swatch {display:inline-block;background:#17a6dd;border:1px solid white;border-radius:50%;width:11px;height:11px;vertical-align:middle}
+
 .fields {display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .span2 {grid-column:span 2}
 .muted {color:#abb8c5}
@@ -240,8 +288,14 @@ tr:hover {background:#26323f}
 <p class="muted">Vyber BTS zo zoznamu, potom uprav adresu a polohu. Zmena sa uloží až po stlačení Uložiť.</p>
 <?php else: ?>
 <p class="muted">ID <?= esc($selected['id']) ?> · <?= esc($selected['mcc'].$selected['mnc']) ?> · LAC <?= esc($selected['lac'] ?? '') ?> · <?= esc($selected['time'] ?? '') ?></p>
+<div class="map-tools">
+ <label><input type="checkbox" id="toggle-observations" checked> <span class="observation-swatch"></span> Merania SIM868 (<?= count($observations) ?><?= count($observations) === $observationCap ? '+' : '' ?>)</label>
+ <button type="button" id="zoom-observations">Zobraziť rozsah meraní</button>
+</div>
+<?php if ($observationError !== ''): ?><p class="error"><?= esc($observationError) ?></p><?php endif; ?>
+<p class="evidence-note">Modré body sú miesta príjmu CellID, nie potvrdená poloha BTS. Zobrazuje sa najviac <?= $observationCap ?> najnovších GPS meraní; pri veľkom rozptyle môže ísť o nejednoznačné dáta.</p>
 <div id="admin-map"></div>
-<p class="muted">Marker môžeš presunúť na mape alebo zadať súradnice ručne.</p>
+<p class="muted">Marker BTS môžeš presunúť na mape alebo zadať súradnice ručne. Zmeny sa ukladajú iba tlačidlom Uložiť.</p>
 <form method="post" action="/admin.php?id=<?= (int)$selected['id'] ?>">
 <input type="hidden" name="csrf" value="<?= esc(csrf()) ?>">
 <input type="hidden" name="action" value="save">
@@ -259,18 +313,69 @@ tr:hover {background:#26323f}
 (function () {
  const lat = <?= json_encode((float)$selected['lat']) ?>;
  const lon = <?= json_encode((float)$selected['lon']) ?>;
- if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat === 0 || lon === 0) return;
- const map = L.map('admin-map').setView([lat, lon], 16);
- L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:18, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
- const marker = L.marker([lat,lon], {draggable:true}).addTo(map);
- const latField=document.getElementById('edit-lat'), lonField=document.getElementById('edit-lon');
- marker.on('dragend',()=>{const p=marker.getLatLng();latField.value=p.lat.toFixed(7);lonField.value=p.lng.toFixed(7);});
- function updateMarker(){
+ const observations = <?= json_encode($observations, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_HEX_APOS | JSON_INVALID_UTF8_SUBSTITUTE) ?>;
+ const hasTower = Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0)
+   && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+ const initial = hasTower ? [lat, lon] : (observations.length ? observations[0].slice(0,2) : [48.745323, 19.550171]);
+ const map = L.map('admin-map').setView(initial, hasTower ? 16 : 10);
+ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom:18, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+ const latField = document.getElementById('edit-lat'), lonField = document.getElementById('edit-lon');
+ let marker = null;
+ function createTowerMarker(point) {
+  if (!marker) {
+   marker = L.marker(point, {draggable:true}).addTo(map).bindTooltip('Poloha BTS (upraviteľná)');
+   marker.on('dragend', () => {
+    const p = marker.getLatLng();
+    latField.value = p.lat.toFixed(7);
+    lonField.value = p.lng.toFixed(7);
+   });
+  } else {
+   marker.setLatLng(point);
+  }
+ }
+ if (hasTower) createTowerMarker([lat,lon]);
+ function updateMarker() {
   const a=Number(latField.value), b=Number(lonField.value);
-  if(Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a)<=90&&Math.abs(b)<=180){marker.setLatLng([a,b]);map.panTo([a,b]);}
+  if(Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a)<=90&&Math.abs(b)<=180
+      && !(a===0&&b===0)) {
+   createTowerMarker([a,b]);
+   map.panTo([a,b]);
+  }
  }
  latField.addEventListener('change',updateMarker);
  lonField.addEventListener('change',updateMarker);
+ const canvas = L.canvas({padding:0.5});
+ const evidence = L.layerGroup().addTo(map);
+ const bounds = L.latLngBounds([]);
+ if (hasTower) bounds.extend([lat,lon]);
+ function escapeText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c =>
+   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ }
+ for (const p of observations) {
+  const location = [p[0], p[1]];
+  bounds.extend(location);
+  const dot = L.circleMarker(location, {
+   renderer:canvas, radius:4, weight:1, color:'#ffffff', fillColor:'#17a6dd', fillOpacity:0.75
+  }).addTo(evidence);
+  dot.bindPopup(() => '<strong>GPS meranie SIM868</strong><br>'
+   + 'Čas (UTC): ' + escapeText(p[2]) + '<br>'
+   + 'LAC: ' + escapeText(p[3]) + ' · BSIC: ' + escapeText(p[4]) + '<br>'
+   + 'CSQ: ' + escapeText(p[5]) + ' · Satelity: ' + escapeText(p[6]) + '<br>'
+   + 'Sender: ' + escapeText(p[7]) + '<br>'
+   + 'GPS: ' + p[0].toFixed(6) + ', ' + p[1].toFixed(6));
+ }
+ const toggle = document.getElementById('toggle-observations');
+ toggle.addEventListener('change', () => {
+  if (toggle.checked) evidence.addTo(map);
+  else map.removeLayer(evidence);
+ });
+ const fit = document.getElementById('zoom-observations');
+ fit.disabled = !observations.length;
+ fit.addEventListener('click', () => {
+  if (bounds.isValid()) map.fitBounds(bounds.pad(0.12), {maxZoom:16});
+ });
 })();
 </script>
 <?php endif; ?>
