@@ -115,16 +115,14 @@ if ($_SESSION["admin"] == "admin_ok") {
 
 #$tracking_list_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE mcc='231' $FILTER order by time DESC ");
 #$tracking_list_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE lat NOT like '0.0%' AND lon NOT like '0.0%' AND mcc='231' $FILTER order by time DESC ");
-$tracking_list_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE lat NOT like '0.0%' AND lon NOT like '0.0%' $FILTER order by time DESC ");
+// Fetch only map fields. The map does not require time-based sorting.
+$tracking_list_db = mysqli_query($spojenie,"SELECT id, lat, lon, mcc, mnc, cellid, address, alt, time FROM $MySQL_table WHERE lat NOT like '0.0%' AND lon NOT like '0.0%' $FILTER");
 $tracking_list_db_row = mysqli_num_rows ($tracking_list_db);
 $marker='var latLong = [
 ';
 
-for ($i = 0; $i <= $tracking_list_db_row; $i++) {
- $entries = mysqli_fetch_array ($tracking_list_db, MYSQLI_ASSOC);
+while ($entries = mysqli_fetch_assoc($tracking_list_db)) {
  if ((!empty($entries['lat'])) && (!empty($entries['lon']))) {
-  $GET_LAT=substr($entries['lat'], 0, 6);
-  $GET_LON=substr($entries['lon'], 0, 6);
 
   if ($cell_loadid == 'on') {
    $lat=$entries['lat'];
@@ -247,6 +245,7 @@ $marker=$marker.'
  @media (max-width: 740px) { .operator-grid { grid-template-columns: repeat(2, minmax(145px, 1fr)); } }
  @media (max-width: 370px) { .operator-grid { grid-template-columns: 1fr; } }
  #map { margin: 0 auto; }
+ .render-time { position: fixed; right: 12px; bottom: 12px; z-index: 1100; padding: 6px 10px; border-radius: 6px; background: rgba(16,20,24,.88); color: #e7edf3; font-size: 12px; pointer-events: none; }
  .load-time { position: fixed; left: 12px; bottom: 12px; z-index: 1100; padding: 6px 10px; border-radius: 6px; background: rgba(16,20,24,.88); color: #e7edf3; font-size: 12px; pointer-events: none; }
 </style>
 </head>
@@ -295,6 +294,7 @@ foreach ($operators as $op) {
  </div>
 </div>
 <div id="load-time" class="load-time" aria-live="polite">Načítavam...</div>
+<div id="render-time" class="render-time" aria-live="polite"></div>
 <table id="map" width="100">
  <td id="maph" height="100" >
  </td>
@@ -324,14 +324,33 @@ echo $marker;
 
 ?>
 
- for (var i = 0; i < latLong.length; i++) {
-  marker = new L.circle([latLong[i][1],latLong[i][2]], 5, {
-   color: latLong[i][3],
-   fillColor: latLong[i][4],
-   fillOpacity: 1,
-   radius: 1
-  }).addTo(map).bindPopup(latLong[i][0]);
+ // Canvas reduces the number of SVG nodes; batches keep touch UI responsive.
+ var btsCanvas = L.canvas({padding: 0.5});
+ var batchSize = 350, nextPoint = 0;
+ var renderStart = performance.now();
+ function drawBtsBatch() {
+  var end = Math.min(nextPoint + batchSize, latLong.length);
+  for (; nextPoint < end; nextPoint++) {
+   var point = latLong[nextPoint];
+   var marker = L.circleMarker([point[1], point[2]], {
+    renderer: btsCanvas,
+    radius: 3,
+    color: point[3],
+    fillColor: point[4],
+    fillOpacity: 1,
+    weight: 1
+   }).addTo(map);
+   marker.bindPopup(point[0]);
+  }
+  if (nextPoint < latLong.length) {
+   requestAnimationFrame(drawBtsBatch);
+  } else {
+   var renderTime = document.getElementById('render-time');
+   if (renderTime) renderTime.textContent = 'Vykreslenie ' + nextPoint + ' bodov: ' +
+    ((performance.now() - renderStart) / 1000).toFixed(2) + ' s';
+  }
  }
+ requestAnimationFrame(drawBtsBatch);
 <?php }?>
 </script>
 <script>
