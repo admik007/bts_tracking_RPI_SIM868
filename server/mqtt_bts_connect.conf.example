@@ -1,0 +1,11 @@
+# Copy to mqtt_bts_connect.conf on the server (never commit real secrets).
+# systemd EnvironmentFile syntax: no spaces around '='.
+MQTT_HOST=127.0.0.1
+MQTT_PORT=1883
+MQTT_TOPIC=bts/+/location
+# MQTT_USER=...
+# MQTT_PASS=...
+MYSQL_HOST=localhost
+MYSQL_USER=YOUR_MYSQL_USER
+MYSQL_PASS=YOUR_MYSQL_PASSWORD
+MYSQL_DB=YOUR_EXISTING_DATABASE
