@@ -435,8 +435,9 @@ def run():
     while True:
         # Refresh sender activity even when no messages arrive; otherwise
         # a disconnected sender would stay green indefinitely.
-        if time.ticks_diff(time.ticks_ms(), last_lcd_refresh) >= 1000:
-            show_status("RECEIVING" if mode == "RECEIVING" else mode)
+        if (mode == "RECEIVING" and
+                time.ticks_diff(time.ticks_ms(), last_lcd_refresh) >= 1000):
+            show_status("RECEIVING")
             last_lcd_refresh = time.ticks_ms()
         # Detect key-down edge, with release before the same key triggers again.
         pressed = None
