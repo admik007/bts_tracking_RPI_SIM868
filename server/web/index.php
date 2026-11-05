@@ -113,96 +113,33 @@ if ($_SESSION["admin"] == "admin_ok") {
 
 
 
-#$tracking_list_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE mcc='231' $FILTER order by time DESC ");
-#$tracking_list_db = mysqli_query($spojenie,"SELECT * FROM $MySQL_table WHERE lat NOT like '0.0%' AND lon NOT like '0.0%' AND mcc='231' $FILTER order by time DESC ");
-// Fetch only map fields. The map does not require time-based sorting.
-$tracking_list_db = mysqli_query($spojenie,"SELECT id, lat, lon, mcc, mnc, cellid, address, alt, time FROM $MySQL_table WHERE lat NOT like '0.0%' AND lon NOT like '0.0%' $FILTER");
-$tracking_list_db_row = mysqli_num_rows ($tracking_list_db);
-$marker='var latLong = [
-';
-
+// Send compact, safely escaped data; build popup HTML only when opened.
+$tracking_list_db = mysqli_query($spojenie,
+ "SELECT id, lat, lon, mcc, mnc, cellid, address, alt, time FROM $MySQL_table WHERE lat NOT like '0.0%' AND lon NOT like '0.0%' $FILTER");
+$map_points = [];
 while ($entries = mysqli_fetch_assoc($tracking_list_db)) {
- if ((!empty($entries['lat'])) && (!empty($entries['lon']))) {
-
-  if ($cell_loadid == 'on') {
-   $lat=$entries['lat'];
-   $lon=$entries['lon'];
-   $zooma='17';
-  } else {
-   $lat="48.745323";
-   $lon="19.550171";
-   $zooma='8';
-  }
-
-
-
-  if ($entries['mcc'].$entries['mnc'] == '23101') {
-   $color="Orange";
-   $colorfill="Black";
-   $operator="Orange";
-  }
-
-  if ($entries['mcc'].$entries['mnc'] == '23102') {
-   $color="Magenta";
-   $colorfill="Black";
-   $operator="Telekom";
-  }
-
-  if ($entries['mcc'].$entries['mnc'] == '23103') {
-   $color="Green";
-   $colorfill="Black";
-   $operator="4ka";
-  }
-
-  if ($entries['mcc'].$entries['mnc'] == '23106') {
-   $color="DodgerBlue";
-   $colorfill="Black";
-   $operator="O2";
-  }
-
-  if ($entries['mcc'] != '231') {
-   $color="#A".$entries['mcc'].$entries['mnc'];
-   $colorfill="#F".$entries['mcc'].$entries['mnc'];
-
-   switch ($entries['mcc']) {
-    case "226":
-     $operator="Romania";
-     break;
-
-    case "216":
-     $operator="Hungary";
-     break;
-
-    case "284":
-     $operator="Bulgaria";
-     break;
-
-   }
-
-  }
-
-  $markerA='OK';
-  $dbid=$entries['id'];
-
-  if ($_SESSION["admin"] == "admin_ok") {
-   $position_lat='';
-   $position_lon='';
-   $address_new='';
-
-   $marker=$marker.' ["<form action=\"/?address='.$address_new.'&position_lat='.$position_lat.'&position_lon='.$position_lon.'&dbid='.$dbid.'\" > <span style=\"font-weight:bold;\">Operator:</span> '.$entries['mcc'].$entries['mnc'].' - '.$operator.'<br> <span style=\"font-weight:bold;\">CellID:</span> >>> '.$entries['cellid'].' <<<<br> <span style=\"font-weight:bold;\">DB_ID:</span> '.$entries['id'].'<br> <span style=\"font-weight:bold;\">Time:</span> '.$entries['time'].' <input type=\"text\" name=\"id\" value=\"'.$entries['id'].'\" hidden > <br> <span style=\"font-weight:bold;\">Address:</span> &nbsp;<input type=\"text\" name=\"address_new\" value=\"'.$entries['address'].'\"><br> <span style=\"font-weight:bold;\">Position:</span> &nbsp;<input type=\"text\" size=\"5\" name=\"position_lat\" value=\"'.$entries['lat'].'\"> / <input type=\"text\" size=\"5\" name=\"position_lon\" value=\"'.$entries['lon'].'\"><br> <span style=\"font-weight:bold;\">Sea level:</span> <input type=\"text\" size=\"5\" name=\"alt\" value=\"'.$entries['alt'].'\"> mnm <br> <center><input type=\"checkbox\" id=\"update\" name=\"update\" checked hidden/> <input type=\"submit\" value=\"Ulozit\"> </form> <p><form action=\"/?dbid='.$dbid.'\"> <input type=\"text\" name=\"id\" value=\"'.$entries['id'].'\" hidden > <input type=\"checkbox\" id=\"delete\" name=\"delete\" checked hidden/> <input type=\"submit\" value=\"Zmazat - '.$dbid.'\"> </form> <a href=\"https://api.geoapify.com/v1/geocode/reverse?type=street&format=xml&lat='.$entries['lat'].'&lon='.$entries['lon'].'&apiKey=054b7c9fcae24adf9976f2e5b6982fa0\" target=\"_blank\"> Get address </a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <a href=\"http://maps.ztk-comp.sk/?lat='.$entries['lat'].'&lon='.$entries['lon'].'&zoom=16\" target=\"_blank\">OSM</a>    ",'.$entries['lat'].','.$entries['lon'].',"'.$color.'","'.$colorfill.'"],
-';
-  } else {
-   $marker=$marker.' ["<span style=\"font-weight:bold;\">Operator:</span> '.$entries['mcc'].$entries['mnc'].' - '.$operator.'<br> <span style=\"font-weight:bold;\">CellID:</span> '.$entries['cellid'].'<br> <span style=\"font-weight:bold;\">DB_ID:</span> '.$entries['id'].'<br> <span style=\"font-weight:bold;\">Address:</span> '.$entries['address'].'<br> <span style=\"font-weight:bold;\">Position:</span> '.$entries['lat'].' / '.$entries['lon'].' ('.$entries['alt'].'mnm) <br>   <center> ",'.$entries['lat'].','.$entries['lon'].',"'.$color.'","'.$colorfill.'"],
-';
-  }
+ if (!is_numeric($entries['lat']) || !is_numeric($entries['lon'])) continue;
+ $point_lat = (float)$entries['lat'];
+ $point_lon = (float)$entries['lon'];
+ if ($point_lat == 0.0 || $point_lon == 0.0) continue;
+ $map_points[] = [
+  $point_lat, $point_lon,
+  (string)$entries['mcc'], (string)$entries['mnc'],
+  (string)$entries['cellid'], (int)$entries['id'],
+  (string)($entries['address'] ?? ''), (string)($entries['alt'] ?? ''),
+  (string)($entries['time'] ?? '')
+ ];
+ if ($cell_loadid === 'on') {
+  $lat = $point_lat;
+  $lon = $point_lon;
+  $zooma = 17;
  }
 }
-
-$zoom=$zooma;
-$marker=$marker.'
-];
-';
-
+$tracking_list_db_row = count($map_points);
+mysqli_free_result($tracking_list_db);
+$zoom = $zooma;
+$map_json = json_encode($map_points, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE);
+if ($map_json === false) $map_json = '[]';
 
 ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
@@ -318,50 +255,101 @@ foreach ($operators as $op) {
  }
  map.on('click', onMapClick);
 
-<?php
-if ($markerA == 'OK'){ 
-echo $marker;
-
-?>
-
- // Canvas reduces the number of SVG nodes; batches keep touch UI responsive.
- var btsCanvas = L.canvas({padding: 0.5});
- var batchSize = 350, nextPoint = 0;
- var renderStart = performance.now();
- function drawBtsBatch() {
-  var end = Math.min(nextPoint + batchSize, latLong.length);
-  for (; nextPoint < end; nextPoint++) {
-   var point = latLong[nextPoint];
-   var marker = L.circleMarker([point[1], point[2]], {
-    renderer: btsCanvas,
-    radius: 3,
-    color: point[3],
-    fillColor: point[4],
-    fillOpacity: 1,
-    weight: 1
-   }).addTo(map);
-   marker.bindPopup(point[0]);
-  }
-  if (nextPoint < latLong.length) {
-   requestAnimationFrame(drawBtsBatch);
-  } else {
-   var renderTime = document.getElementById('render-time');
-   if (renderTime) renderTime.textContent = 'Vykreslenie ' + nextPoint + ' bodov: ' +
-    ((performance.now() - renderStart) / 1000).toFixed(2) + ' s';
-  }
+// Map data is JSON; keep the same colors, radius and Canvas batching.
+const latLong = <?php echo $map_json; ?>;
+const btsAdmin = <?php echo json_encode(($_SESSION['admin'] ?? '') === 'admin_ok'); ?>;
+const operatorInfo = {
+ '23101': ['Orange', 'Orange'],
+ '23102': ['Telekom', 'Magenta'],
+ '23103': ['4ka', 'Green'],
+ '23106': ['O2', 'DodgerBlue']
+};
+function escapeHtml(value) {
+ return String(value ?? '').replace(/[&<>"']/g, function (character) {
+  return {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[character];
+ });
+}
+function cellPopup(point) {
+ const [lat, lon, mcc, mnc, cellid, id, address, alt, time] = point;
+ const code = mcc + mnc;
+ const operator = operatorInfo[code]?.[0] ||
+  ({'226':'Romania', '216':'Hungary', '284':'Bulgaria'}[mcc] || 'Other');
+ const title = '<strong>Operator:</strong> ' + escapeHtml(code) + ' - ' + escapeHtml(operator)
+  + '<br><strong>CellID:</strong> ' + escapeHtml(cellid)
+  + '<br><strong>DB_ID:</strong> ' + escapeHtml(id);
+ if (!btsAdmin) {
+  return title + '<br><strong>Address:</strong> ' + escapeHtml(address)
+   + '<br><strong>Position:</strong> ' + escapeHtml(lat) + ' / ' + escapeHtml(lon)
+   + ' (' + escapeHtml(alt) + ' mnm)';
  }
- requestAnimationFrame(drawBtsBatch);
-<?php }?>
+ function field(name, value, size) {
+  return '<input type="text" name="' + name + '" value="' + escapeHtml(value)
+   + '"' + (size ? ' size="' + size + '"' : '') + '>';
+ }
+ return '<form method="get" action="/">'
+  + title + '<br><strong>Time:</strong> ' + escapeHtml(time)
+  + '<input type="hidden" name="id" value="' + encodeURIComponent(id) + '">'
+  + '<input type="hidden" name="update" value="on">'
+  + '<br><strong>Address:</strong> ' + field('address_new', address)
+  + '<br><strong>Position:</strong> ' + field('position_lat', lat, 9)
+  + ' / ' + field('position_lon', lon, 9)
+  + '<br><strong>Sea level:</strong> ' + escapeHtml(alt) + ' mnm'
+  + '<br><button type="submit">Ulozit</button></form>'
+  + '<form method="get" action="/">'
+  + '<input type="hidden" name="id" value="' + encodeURIComponent(id) + '">'
+  + '<input type="hidden" name="delete" value="on">'
+  + '<button type="submit">Zmazat - ' + escapeHtml(id) + '</button></form>'
+  + '<a target="_blank" rel="noopener" href="https://api.geoapify.com/v1/geocode/reverse?type=street&amp;format=xml&amp;lat='
+  + encodeURIComponent(lat) + '&amp;lon=' + encodeURIComponent(lon)
+  + '&amp;apiKey=054b7c9fcae24adf9976f2e5b6982fa0">Get address</a> &nbsp; '
+  + '<a target="_blank" rel="noopener" href="https://maps.ztk-comp.sk/?lat='
+  + encodeURIComponent(lat) + '&amp;lon=' + encodeURIComponent(lon)
+  + '&amp;zoom=16">OSM</a>';
+}
+const btsCanvas = L.canvas({padding: 0.5});
+const batchSize = 350;
+let nextPoint = 0;
+const renderStart = performance.now();
+function drawBtsBatch() {
+ const end = Math.min(nextPoint + batchSize, latLong.length);
+ for (; nextPoint < end; nextPoint++) {
+  const point = latLong[nextPoint];
+  const palette = operatorInfo[point[2] + point[3]];
+  const color = palette ? palette[1] : (point[2] !== '231' ? '#A' + point[2] + point[3] : '#888888');
+  const fillColor = palette ? 'Black' : (point[2] !== '231' ? '#F' + point[2] + point[3] : 'Black');
+  const marker = L.circleMarker([point[0], point[1]], {
+   renderer: btsCanvas,
+   radius: 3,
+   color: color,
+   fillColor: fillColor,
+   fillOpacity: 1,
+   weight: 1
+  }).addTo(map);
+  marker.bindPopup(function () { return cellPopup(point); });
+ }
+ if (nextPoint < latLong.length) {
+  requestAnimationFrame(drawBtsBatch);
+ } else {
+  const display = document.getElementById('render-time');
+  if (display) display.textContent = 'Vykreslenie ' + nextPoint + ' bodov: '
+   + ((performance.now() - renderStart) / 1000).toFixed(2) + ' s';
+ }
+}
+requestAnimationFrame(drawBtsBatch);
 </script>
 <script>
- // Browser navigation timing: includes HTML, scripts, styles and load-blocking resources.
- window.addEventListener('load', function () {
-  var element = document.getElementById('load-time');
-  if (!element) return;
-  var navigation = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
-  var duration = navigation ? navigation.duration : performance.now();
-  element.textContent = 'Načítanie stránky: ' + (duration / 1000).toFixed(2) + ' s';
+// Measure completed navigation; navigation.duration may still be zero in the load handler.
+window.addEventListener('load', function () {
+ requestAnimationFrame(function () {
+  const el = document.getElementById('load-time');
+  if (!el) return;
+  const navigation = performance.getEntriesByType?.('navigation')?.[0];
+  const elapsed = navigation && navigation.loadEventEnd > 0
+   ? navigation.loadEventEnd - navigation.startTime
+   : performance.now();
+  el.textContent = 'Načítanie stránky: ' + (elapsed / 1000).toFixed(2) + ' s';
  });
+});
 </script>
 
 <?php
