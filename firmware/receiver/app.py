@@ -275,7 +275,7 @@ def _load_cursor(max_bytes):
 def _commit_cursor(pos, next_slot):
     # Two alternating slots: a torn write leaves the previous slot intact.
     with open(next_slot, "w") as f:
-        f.write("{}:{:08x}\\n".format(pos, _cursor_checksum(pos)))
+        f.write("{}:{:08x}\n".format(pos, _cursor_checksum(pos)))
         f.flush()
     return POS_SLOT_B if next_slot == POS_SLOT_A else POS_SLOT_A
 
@@ -354,7 +354,7 @@ def _upload_pending(sta):
                     print("Upload complete; records:", sent)
                     return None, sent
                 new_pos = f.tell()
-                if not line.endswith(b"\\n"):
+                if not line.endswith(b"\n"):
                     raise ValueError("Incomplete JSONL record at {}".format(pos))
                 record = ujson.loads(line.decode('utf-8'))
                 if not isinstance(record, dict) or not record.get("device"):
@@ -455,10 +455,19 @@ def run():
                     print("KEY2: resume receiving")
                     _disconnect_home_wifi(sta)
                     sta = None
-                    if not sd_ready:
-                        mount_sd()
-                    ap, server = _open_listener()
-                    mode = "RECEIVING"
+                    if not sd_ready and not mount_sd():
+                        print("KEY2: SD remount failed; staying safe")
+                        show_status("SD REMOUNT ERR")
+                        mode = "SAFE"
+                    else:
+                        try:
+                            ap, server = _open_listener()
+                            mode = "RECEIVING"
+                            print("KEY2: AP and TCP receiving restored")
+                        except Exception as exc:
+                            print("KEY2: AP restore failed:", exc)
+                            mode = "ERROR"
+                            show_status("AP RESTART ERR")
                 elif pressed == "UPLOAD" and mode in ("RECEIVING", "UPLOADING"):
                     print("KEY0: upload pending MQTT records")
                     if mode == "RECEIVING":
@@ -479,8 +488,13 @@ def run():
                         elif action == "RECEIVING":
                             _disconnect_home_wifi(sta)
                             sta = None
-                            ap, server = _open_listener()
-                            mode = "RECEIVING"
+                            if not sd_ready and not mount_sd():
+                                mode = "ERROR"
+                                show_status("SD REMOUNT ERR")
+                            else:
+                                ap, server = _open_listener()
+                                mode = "RECEIVING"
+                                print("KEY2: AP and TCP receiving restored")
                         else:
                             show_status("UPLOAD DONE")
                     except Exception as exc:
