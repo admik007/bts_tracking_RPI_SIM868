@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $lon = valid_coordinate($_POST['lon'] ?? null, -180, 180);
         $address = trim((string)($_POST['address'] ?? ''));
         if (!$id || $lat === null || $lon === null || ($lat == 0.0 && $lon == 0.0)
-            || mb_strlen($address, 'UTF-8') > 255) {
+            || strlen($address) > 255) {
             $error = 'Skontroluj ID, súradnice a dĺžku adresy (max. 255 znakov).';
         } else {
             // Explicitly update only the selected BTS row; no deletion from this UI.
