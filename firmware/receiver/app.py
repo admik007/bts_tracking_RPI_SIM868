@@ -54,7 +54,7 @@ sd_ready = False
 sd_fault = None
 records_saved = 0
 lcd = None
-sender_cells = {}  # device -> (MCCMNC, CellID); insertion order determines LCD slots
+sender_cells = {}  # device -> (MCCMNC, CellID, last_seen_ms, previous_CellID)
 MAX_LCD_SENDERS = 3
 _sd_spi = None
 _sd_device = None
@@ -206,10 +206,22 @@ def handle_client(client, address):
                 if save_record(record):
                     device = record.get("device")
                     if device in sender_cells or len(sender_cells) < MAX_LCD_SENDERS:
+                        operator = str(record.get("mcc", "")) + str(record.get("mnc", ""))
+                        cellid = str(record.get("cellid", "-"))
+                        old = sender_cells.get(device)
+                        previous = "-"
+                        if old is not None:
+                            old_operator, old_cellid = old[:2]
+                            # Never show a previous cell from a different network.
+                            if old_operator == operator:
+                                previous = old[3] if len(old) > 3 else "-"
+                                if cellid not in ("", "-", "None") and old_cellid != cellid:
+                                    if old_cellid not in ("", "-", "None"):
+                                        previous = old_cellid
+                                        print("CELL CHANGE: {} {} -> {} (device {})".format(
+                                            operator, old_cellid, cellid, device))
                         sender_cells[device] = (
-                            str(record.get("mcc", "")) + str(record.get("mnc", "")),
-                            str(record.get("cellid", "-")),
-                            time.ticks_ms())  # Monotonic receiver receive timestamp
+                            operator, cellid, time.ticks_ms(), previous)
                     print("SD SAVED #{}: {}".format(records_saved, ujson.dumps(record)))
                     show_status("RECEIVING")
                     client.send(b"OK\n")
