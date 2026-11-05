@@ -1,8 +1,8 @@
 {
-  "version": "receiver-fix-365120f32a85",
+  "version": "receiver-heartbeat-30s-v1",
   "files": {
-    "app.py": "365120f32a85fa118eea17935a459c46ca25cfac8a80758979d9396d79b0d5df",
-    "lcd.py": "929c0802c3babdaed1a0e412d5d0b784ac4c9f3f905501af51e4c7ea7e7893d1",
+    "app.py": "3a19f7c61951338887cdedc38a7942720ae3d72e1d9037216fba0924e785ddec",
+    "lcd.py": "df96427f92de77a2f2efbaf9fef8b91ff5c22e203723f7df5d621dbd0308e6f1",
     "sdcard.py": "78ffa5097bff36855dc78ff0a374cbee4345e2e8f19be040d3bcf5731ac9b409",
     "mqtt_upload.py": "c228c378fe7a3c49c49c2bfc2de1777797b22df9013ed09e73df7921ca34fed3"
   }
