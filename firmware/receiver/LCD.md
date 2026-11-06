@@ -40,3 +40,9 @@ Sender rows are assigned in order of first successfully stored message during
 this boot, and each device's row updates independently. Additional senders are
 still logged to SD, but are not shown on this three-row screen. Row numbering
 is local to the current boot, not a permanent device assignment.
+
+Each sender's first row also shows a **G** directly before the
+existing activity ring/X: green G means `gps_valid=true` in that
+sender's latest successfully saved record; red G means no GPS fix.
+G retains the last reported fix state while the ring/X indicates
+whether the sender is still transmitting (30-second timeout).
