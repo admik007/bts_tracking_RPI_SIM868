@@ -109,7 +109,7 @@ if (!in_array($status, ['', 'mapped', 'unmapped'], true)) $status = '';
 $search = trim((string)($_GET['q'] ?? ''));
 $search = substr($search, 0, 80);
 $page = max(1, min(10000, (int)($_GET['page'] ?? 1)));
-$perPage = 60;
+$perPage = 180;
 $auditMode = ($_GET['view'] ?? '') === 'audit';
 $auditRows = [];
 $auditError = '';
@@ -394,7 +394,7 @@ Viaceré LAC sú <strong>signálom na preverenie</strong>, nie dôkazom chybnej 
  const hasTower = Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0)
    && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
  const initial = hasTower ? [lat, lon] : (observations.length ? observations[0].slice(0,2) : [48.745323, 19.550171]);
- const map = L.map('admin-map').setView(initial, hasTower ? 16 : 10);
+ const map = L.map('admin-map').setView(initial, hasTower ? 14 : 8);
  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   {maxZoom:18, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
  const latField = document.getElementById('edit-lat'), lonField = document.getElementById('edit-lon');
