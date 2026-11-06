@@ -220,8 +220,11 @@ def handle_client(client, address):
                                         previous = old_cellid
                                         print("CELL CHANGE: {} {} -> {} (device {})".format(
                                             operator, old_cellid, cellid, device))
+                        # Append GPS fix flag; keep the existing four
+                        # fields and circle/X activity timeout unchanged.
+                        gps_fix = record.get("gps_valid") is True or record.get("gps_valid") == 1
                         sender_cells[device] = (
-                            operator, cellid, time.ticks_ms(), previous)
+                            operator, cellid, time.ticks_ms(), previous, gps_fix)
                     print("SD SAVED #{}: {}".format(records_saved, ujson.dumps(record)))
                     show_status("RECEIVING")
                     client.send(b"OK\n")
