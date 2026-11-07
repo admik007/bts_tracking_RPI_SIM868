@@ -197,7 +197,7 @@ class StatusLCD:
         self.lcd = LCD_1inch44()
         self.render(False, 0, {}, "WAITING")
 
-    def render(self, sd_ok, saved, senders, state="RECEIVING"):
+    def render(self, sd_ok, saved, senders, state="RECEIVING", gps_ok=False):
         lcd = self.lcd
         lcd.fill(lcd.BLACK)
         lcd.text("BTS TRACKING", 4, 2, lcd.WHITE)
@@ -210,8 +210,10 @@ class StatusLCD:
                  ("WiFi: OFF" if safe else "AP: 192.168.4.1"),
                  2, 17, lcd.GBLUE)
         sd_label = "OFF" if safe else ("OK" if sd_ok else "ERROR")
-        lcd.text("SD: " + sd_label, 2, 30,
+        lcd.text("SD:" + sd_label, 2, 30,
                  lcd.GREEN if (sd_ok or safe) else lcd.RED)
+        lcd.text("GPS: " + ("OK" if gps_ok else "--"), 66, 30,
+                 lcd.GREEN if gps_ok else lcd.RED)
         lcd.text("Saved: {}".format(saved), 2, 43, lcd.WHITE)
         lcd.hline(0, 56, 128, lcd.WHITE)
         # Three fixed slots. Every sender is identified by its unique device ID
@@ -229,10 +231,8 @@ class StatusLCD:
             # Two 8-pixel-high rows per sender: current cell + previous cell.
             y = 59 + idx * 17
             row = "{} {} {}".format(idx + 1, operator, cid)
-            # Keep x=108 reserved for G; x=121 for the activity ring/X.
+            # Right edge remains reserved for the activity ring/X.
             lcd.text(row[:13], 2, y, lcd.YELLOW)
-            gps_fix = cells[4] if len(cells) > 4 else False
-            lcd.text("G", 108, y, lcd.GREEN if gps_fix else lcd.RED)
             previous = cells[3] if len(cells) > 3 else "-"
             lcd.text(("  prev: " + str(previous))[:16], 2, y + 8, lcd.WHITE)
             # Reserve rightmost 9 px for a 7x7 green ring or red X.
