@@ -57,7 +57,8 @@ class SIM868:
         print("SIM868 CGREG:", self.command("AT+CGREG?").strip())
         print("SIM868 COPS:", self.command("AT+COPS?").strip())
         print("SIM868 CENG enable:", self.command("AT+CENG=4,0", 3000).strip())
-        print("SIM868 GNSS enable:", self.command("AT+CGNSPWR=1", 5000).strip())
+        # GNSS is intentionally disabled; the receiver's L76 provides GPS.
+        print("SIM868 GNSS disable:", self.command("AT+CGNSPWR=0", 5000).strip())
         return True
 
     @staticmethod
@@ -108,37 +109,5 @@ class SIM868:
             result["bsic"] = self._number(fields[5])
             result["cellid"] = cellid
             result["lac"] = lac
-            break
-        return result
-
-    def gnss(self):
-        result = {"gps_valid": False, "time": None, "lat": None,
-                  "lon": None, "alt": None, "speed_kmh": None,
-                  "course": None, "sat": None}
-        for line in self.command("AT+CGNSINF", 3000).splitlines():
-            if not line.startswith("+CGNSINF:"):
-                continue
-            parts = line.split(":", 1)[1].strip().split(",")
-            if len(parts) < 8 or parts[0].strip() != "1" or parts[1].strip() != "1":
-                break
-            try:
-                raw_time = parts[2].strip()
-                lat, lon = float(parts[3]), float(parts[4])
-                if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                    break
-                result["gps_valid"] = True
-                result["lat"], result["lon"] = lat, lon
-                result["alt"] = float(parts[5]) if parts[5] else None
-                # CGNSINF speed is in km/h.
-                result["speed_kmh"] = float(parts[6]) if parts[6] else None
-                result["course"] = float(parts[7]) if parts[7] else None
-                if len(raw_time) >= 14 and raw_time[:14].isdigit():
-                    result["time"] = (raw_time[0:4] + "-" + raw_time[4:6] + "-" +
-                                      raw_time[6:8] + "T" + raw_time[8:10] + ":" +
-                                      raw_time[10:12] + ":" + raw_time[12:14] + "Z")
-                if len(parts) > 14:
-                    result["sat"] = self._number(parts[14])
-            except (ValueError, IndexError):
-                pass
             break
         return result
