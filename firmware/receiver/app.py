@@ -15,6 +15,7 @@ import config
 import sdcard
 import config_wifi
 import mqtt_upload
+from l76 import L76GPS
 
 try:
     from lcd import StatusLCD
@@ -54,6 +55,7 @@ sd_ready = False
 sd_fault = None
 records_saved = 0
 lcd = None
+gps = None
 sender_cells = {}  # device -> (MCCMNC, CellID, last_seen_ms, previous_CellID)
 MAX_LCD_SENDERS = 3
 _sd_spi = None
@@ -64,7 +66,8 @@ def show_status(state="RECEIVING"):
     if lcd is None:
         return
     try:
-        lcd.render(sd_ready, records_saved, sender_cells, state)
+        lcd.render(sd_ready, records_saved, sender_cells, state,
+                   gps.has_fix() if gps is not None else False)
     except Exception as exc:
         print("LCD update error:", exc)
 
@@ -136,6 +139,21 @@ def save_record(record):
         return False
 
 
+def apply_gps_fallback(record):
+    """Use receiver L76 coordinates only when sender SIM868 has no fix."""
+    sender_valid = record.get("gps_valid") is True or record.get("gps_valid") == 1
+    if sender_valid:
+        record.setdefault("gps_source", "sender_sim868")
+        return record
+    if gps is not None:
+        fix = gps.snapshot()
+        if fix.get("gps_valid"):
+            record["sender_gps_valid"] = False
+            record.update(fix)
+            record["gps_source"] = "receiver_l76"
+    return record
+
+
 def start_ap():
     sta = network.WLAN(network.STA_IF)
     try:
@@ -181,6 +199,8 @@ def handle_client(client, address):
     pending = b""
     try:
         while True:
+            if gps is not None:
+                gps.update()
             try:
                 chunk = client.recv(512)
             except OSError:
@@ -199,6 +219,9 @@ def handle_client(client, address):
                     return
                 try:
                     record = parse_record(line)
+                    if gps is not None:
+                        gps.update()
+                    record = apply_gps_fallback(record)
                 except (ValueError, TypeError, UnicodeError) as exc:
                     print("Invalid record:", exc)
                     client.send(b"ERR json\n")
@@ -220,11 +243,10 @@ def handle_client(client, address):
                                         previous = old_cellid
                                         print("CELL CHANGE: {} {} -> {} (device {})".format(
                                             operator, old_cellid, cellid, device))
-                        # Append GPS fix flag; keep the existing four
-                        # fields and circle/X activity timeout unchanged.
-                        gps_fix = record.get("gps_valid") is True or record.get("gps_valid") == 1
+                        # Sender GPS status is no longer shown; receiver L76
+                        # supplies the fallback location when sender GPS is invalid.
                         sender_cells[device] = (
-                            operator, cellid, time.ticks_ms(), previous, gps_fix)
+                            operator, cellid, time.ticks_ms(), previous)
                     print("SD SAVED #{}: {}".format(records_saved, ujson.dumps(record)))
                     show_status("RECEIVING")
                     client.send(b"OK\n")
@@ -431,8 +453,14 @@ def _open_listener():
 
 
 def run():
-    global lcd
+    global lcd, gps
     led = machine.Pin("LED", machine.Pin.OUT)
+    try:
+        gps = L76GPS()
+        print("L76 GPS initialized: UART1 TX=GP4 RX=GP5 9600")
+    except Exception as exc:
+        gps = None
+        print("L76 GPS init failed:", exc)
     if StatusLCD is not None:
         try:
             lcd = StatusLCD()
@@ -448,6 +476,8 @@ def run():
     last_lcd_refresh = time.ticks_ms()
 
     while True:
+        if gps is not None:
+            gps.update()
         # Refresh sender activity even when no messages arrive; otherwise
         # a disconnected sender would stay green indefinitely.
         if (mode == "RECEIVING" and
