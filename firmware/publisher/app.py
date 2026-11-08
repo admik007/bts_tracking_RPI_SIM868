@@ -77,10 +77,22 @@ def run():
     wlan = network.WLAN(network.STA_IF)
     sim = SIM868()
     boot_started = time.ticks_ms()
+    led.value(0)
     print("BTS TRACKING publisher, Pico:", DEVICE_ID)
+
+    def modem_error():
+        # Three short flashes, then a pause before repeating.
+        for _ in range(3):
+            led.value(1)
+            time.sleep_ms(100)
+            led.value(0)
+            time.sleep_ms(100)
+        time.sleep_ms(900)
+
     # The SIM868 measurement loop must still function without the receiver.
     if not sim.start():
         print("SIM868 did not respond; retrying periodically")
+        modem_error()
 
     # Switch from the OTA infrastructure Wi-Fi to the receiver AP explicitly.
     connect_receiver(wlan)
@@ -107,13 +119,24 @@ def run():
                 print("Receiver send delay: %d ms" % send_delay)
                 time.sleep_ms(send_delay)
 
-            if send_record(wlan, record):
+            if wlan.isconnected():
+                # LED is on only while the TCP record is being transmitted.
+                led.value(1)
+                try:
+                    sent = send_record(wlan, record)
+                finally:
+                    led.value(0)
+            else:
+                sent = False
+
+            if sent:
                 print("Receiver ACK: OK")
             else:
                 print("Receiver delivery not confirmed (no local queue yet)")
-            led.toggle()
+
             if cell["cellid"] is None and not sim.start():
                 print("SIM868 reinit unsuccessful")
+                modem_error()
         except Exception as exc:
             print("Measurement error:", exc)
 
