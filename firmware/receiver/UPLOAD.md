@@ -43,15 +43,19 @@ GPS Tracking subscription/topic is not modified.
 
 ## SD queue and restart recovery
 
-Receiver logs BTS measurements as JSONL in `/sd/pending.jsonl`.
+Receiver logs BTS measurements as JSONL in `/sd/pending.jsonl`. When the active
+file reaches 2,000,000 bytes, it is renamed to `/sd/bts_NNNNNN.jsonl` and a
+new `/sd/pending.jsonl` is created. Numbered files are retained as an archive.
 KEY0 stops the AP listener before sending. No sender buffers are changed.
 
-After each broker PUBACK, the receiver writes a byte-offset cursor
+After each broker PUBACK, the receiver writes a file-number + byte-offset cursor
 to alternating SD files `/sd/bts.pos.a` and `/sd/bts.pos.b`
-(with checksum), preserving the previous valid offset if the new cursor
-write is interrupted.
+(with checksum), preserving the previous valid cursor if the new cursor
+write is interrupted. Legacy offset-only cursors are also accepted and mapped
+to the original first queue file.
 
-On a future upload it resumes from the highest valid cursor. If the
+On a future upload it resumes from the highest valid cursor and replays
+numbered archive files in order, followed by the active `pending.jsonl`. If the
 MQTT transfer succeeds but power fails before recording the cursor,
 **that record may be sent again**. QoS 1 / PUBACK is not a server
 database commit; deduplication on the ingestion server is recommended.
