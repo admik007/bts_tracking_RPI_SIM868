@@ -57,8 +57,7 @@ class SIM868:
         print("SIM868 CGREG:", self.command("AT+CGREG?").strip())
         print("SIM868 COPS:", self.command("AT+COPS?").strip())
         print("SIM868 CENG enable:", self.command("AT+CENG=4,0", 3000).strip())
-        # GNSS is intentionally disabled; the receiver's L76 provides GPS.
-        print("SIM868 GNSS disable:", self.command("AT+CGNSPWR=0", 5000).strip())
+        print("SIM868 GNSS power:", self.command("AT+CGNSPWR=1", 5000).strip())
         return True
 
     @staticmethod
@@ -67,6 +66,45 @@ class SIM868:
             return int(v.strip().strip('"'), base)
         except (ValueError, TypeError):
             return None
+
+    def gnss(self):
+        """Return the current SIM868 GNSS fix, or an explicitly invalid fix."""
+        result = {"gps_valid": False, "time": None, "lat": None,
+                  "lon": None, "alt": None, "speed_kmh": None,
+                  "course": None, "sat": None}
+        response = self.command("AT+CGNSINF", 3000)
+        for line in response.splitlines():
+            if not line.startswith("+CGNSINF:"):
+                continue
+            fields = line.split(":", 1)[1].strip().split(",")
+            if len(fields) < 8 or fields[1].strip() != "1":
+                break
+            try:
+                lat = float(fields[3])
+                lon = float(fields[4])
+                if lat == 0 or lon == 0:
+                    break
+                stamp = fields[2].strip()
+                gps_time = None
+                if len(stamp) >= 14:
+                    gps_time = "{}-{}-{}T{}:{}:{}Z".format(
+                        stamp[0:4], stamp[4:6], stamp[6:8],
+                        stamp[8:10], stamp[10:12], stamp[12:14])
+                result["gps_valid"] = True
+                result["time"] = gps_time
+                result["lat"] = lat
+                result["lon"] = lon
+                result["alt"] = float(fields[5]) if fields[5] else None
+                result["speed_kmh"] = float(fields[6]) if fields[6] else None
+                result["course"] = float(fields[7]) if fields[7] else None
+                # SIM868 CGNSINF satellite-count fields vary by firmware;
+                # field 15 is GNSS satellites used on standard responses.
+                if len(fields) > 15 and fields[15]:
+                    result["sat"] = int(float(fields[15]))
+            except (ValueError, IndexError):
+                pass
+            break
+        return result
 
     def cell(self):
         result = {"technology": "GSM", "mcc": None, "mnc": None,
