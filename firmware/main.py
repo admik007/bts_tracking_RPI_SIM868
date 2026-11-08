@@ -128,6 +128,11 @@ def update_firmware():
         raise
 
 def boot():
+    # Blink during boot, Wi-Fi check and OTA. app.py takes over LED control.
+    led = machine.Pin("LED", machine.Pin.OUT)
+    led_timer = machine.Timer(-1)
+    led_timer.init(period=150, mode=machine.Timer.PERIODIC,
+                   callback=lambda timer: led.toggle())
     # Give Thonny time to attach after Pico starts.
     print("Startup delay: 15 seconds (Thonny connection)")
     time.sleep(15)
@@ -138,6 +143,8 @@ def boot():
             update_firmware()
         except Exception as exc:
             print("OTA skipped:", exc)
+    led_timer.deinit()
+    led.value(0)
     import app
     app.run()
 
