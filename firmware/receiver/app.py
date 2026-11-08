@@ -94,6 +94,7 @@ def mount_sd():
             os.mount(os.VfsFat(_sd_device), SD_MOUNT)
             with open(QUEUE_PATH, "a") as out:
                 pass
+            _rotate_queue_if_needed()
             sd_ready = True
             sd_fault = None
             print("SD mounted:", SD_MOUNT)
@@ -129,6 +130,12 @@ def save_record(record):
             out.flush()
         records_saved += 1
         sd_fault = None
+        # Rotate only after the complete JSONL record has been closed.
+        try:
+            _rotate_queue_if_needed()
+        except Exception as rotate_exc:
+            # The record is already safely stored. Retry rotation on next append.
+            print("SD queue rotation deferred:", rotate_exc)
         return True
     except Exception as exc:
         sd_ready = False
@@ -311,44 +318,117 @@ def _request_during_upload():
     return None
 
 
-def _cursor_checksum(value):
-    # Detect a torn/partial cursor write.
-    return (value ^ 0x5A5A5A5A) & 0xFFFFFFFF
+ARCHIVE_PREFIX = "bts_"
+ARCHIVE_SUFFIX = ".jsonl"
+MAX_QUEUE_FILE_BYTES = 2_000_000
 
 
-def _read_position(path, max_bytes):
+def _archive_ids():
+    ids = []
+    try:
+        names = os.listdir(SD_MOUNT)
+    except OSError:
+        return ids
+    for name in names:
+        if (name.startswith(ARCHIVE_PREFIX) and
+                name.endswith(ARCHIVE_SUFFIX) and len(name) == 16):
+            try:
+                ids.append(int(name[4:10]))
+            except ValueError:
+                pass
+    ids.sort()
+    return ids
+
+
+def _queue_files():
+    # Archived files are immutable; pending.jsonl is always the newest file.
+    files = []
+    for file_id in _archive_ids():
+        files.append((file_id, SD_MOUNT + "/" + ARCHIVE_PREFIX +
+                      "{:06d}".format(file_id) + ARCHIVE_SUFFIX))
+    files.append((files[-1][0] + 1 if files else 1, QUEUE_PATH))
+    return files
+
+
+def _rotate_queue_if_needed():
+    size = os.stat(QUEUE_PATH)[6]
+    if size < MAX_QUEUE_FILE_BYTES:
+        return False
+    ids = _archive_ids()
+    next_id = ids[-1] + 1 if ids else 1
+    archive_path = SD_MOUNT + "/" + ARCHIVE_PREFIX + "{:06d}".format(next_id) + ARCHIVE_SUFFIX
+    os.rename(QUEUE_PATH, archive_path)
+    with open(QUEUE_PATH, "a") as out:
+        pass
+    print("SD queue rotated:", archive_path, "bytes:", size)
+    return True
+
+
+def _cursor_checksum(file_id, pos):
+    # Include both file number and byte offset to detect torn cursor writes.
+    return ((file_id * 0x45D9F3B) ^ pos ^ 0x5A5A5A5A) & 0xFFFFFFFF
+
+
+def _queue_path_for_id(file_id):
+    for current_id, path in _queue_files():
+        if current_id == file_id:
+            return path
+    return None
+
+
+def _read_position(path):
     try:
         with open(path, "r") as f:
-            line = f.read(40).strip()
-        fields = line.split(":")
-        if len(fields) != 2:
+            fields = f.read(48).strip().split(":")
+        # Legacy format: offset:checksum for the original pending.jsonl.
+        if len(fields) == 2:
+            file_id = 1
+            pos = int(fields[0])
+            checksum_ok = int(fields[1], 16) == ((pos ^ 0x5A5A5A5A) & 0xFFFFFFFF)
+        elif len(fields) == 3:
+            file_id = int(fields[0])
+            pos = int(fields[1])
+            checksum_ok = int(fields[2], 16) == _cursor_checksum(file_id, pos)
+        else:
             return None
-        pos = int(fields[0])
-        if not 0 <= pos <= max_bytes:
+        queue_path = _queue_path_for_id(file_id)
+        if not checksum_ok or queue_path is None or pos < 0:
             return None
-        if int(fields[1], 16) != _cursor_checksum(pos):
+        if pos > os.stat(queue_path)[6]:
             return None
-        return pos
+        return (file_id, pos)
     except (OSError, ValueError, IndexError):
         return None
 
 
-def _load_cursor(max_bytes):
-    a = _read_position(POS_SLOT_A, max_bytes)
-    b = _read_position(POS_SLOT_B, max_bytes)
+def _load_cursor():
+    a = _read_position(POS_SLOT_A)
+    b = _read_position(POS_SLOT_B)
     if a is None and b is None:
-        return 0, POS_SLOT_A
+        return (1, 0), POS_SLOT_A
     if b is None or (a is not None and a >= b):
         return a, POS_SLOT_B
     return b, POS_SLOT_A
 
 
-def _commit_cursor(pos, next_slot):
+def _commit_cursor(file_id, pos, next_slot):
     # Two alternating slots: a torn write leaves the previous slot intact.
     with open(next_slot, "w") as f:
-        f.write("{}:{:08x}\n".format(pos, _cursor_checksum(pos)))
+        f.write("{}:{}:{:08x}\\n".format(
+            file_id, pos, _cursor_checksum(file_id, pos)))
         f.flush()
     return POS_SLOT_B if next_slot == POS_SLOT_A else POS_SLOT_A
+
+
+def _pending_bytes(cursor):
+    cursor_id, cursor_pos = cursor
+    total = 0
+    for file_id, path in _queue_files():
+        if file_id < cursor_id:
+            continue
+        size = os.stat(path)[6]
+        total += max(0, size - (cursor_pos if file_id == cursor_id else 0))
+    return total
 
 
 def _stop_access_point(ap, server):
@@ -402,10 +482,11 @@ def _upload_pending(sta):
         raise OSError("SD unavailable")
     if not MQTT_HOST:
         raise ValueError("MQTT_HOST missing in local config_wifi.py")
-    size = os.stat(QUEUE_PATH)[6]
-    pos, next_slot = _load_cursor(size)
+    cursor, next_slot = _load_cursor()
+    pending_bytes = _pending_bytes(cursor)
     sent = 0
-    print("MQTT pending bytes:", size, "resume:", pos)
+    print("MQTT pending bytes:", pending_bytes,
+          "resume file:", cursor[0], "offset:", cursor[1])
     show_status("SENT: 0")
     client_id = "bts-receiver-" + "".join("{:02x}".format(b) for b in machine.unique_id())
     client = mqtt_upload.MQTTUploader(
@@ -413,33 +494,40 @@ def _upload_pending(sta):
     try:
         client.connect()
         print("MQTT connected:", MQTT_HOST, MQTT_PORT)
-        with open(QUEUE_PATH, "rb") as f:
-            f.seek(pos)
-            while True:
-                action = _request_during_upload()
-                if action:
-                    return action, sent
-                line = f.readline()
-                if not line:
+        for file_id, path in _queue_files():
+            if file_id < cursor[0]:
+                continue
+            pos = cursor[1] if file_id == cursor[0] else 0
+            with open(path, "rb") as f:
+                f.seek(pos)
+                while True:
+                    action = _request_during_upload()
+                    if action:
+                        return action, sent
+                    line = f.readline()
+                    if not line:
+                        break
+                    new_pos = f.tell()
+                    if not line.endswith(b"\\n"):
+                        raise ValueError("Incomplete JSONL record at {}:{}".format(
+                            file_id, pos))
+                    record = ujson.loads(line.decode('utf-8'))
+                    if not isinstance(record, dict) or not record.get("device"):
+                        raise ValueError("Invalid JSONL record at {}:{}".format(
+                            file_id, pos))
+                    topic = "{}/{}/location".format(
+                        MQTT_TOPIC_PREFIX, record["device"])
+                    client.publish(topic, line.decode("utf-8").strip())
+                    next_slot = _commit_cursor(file_id, new_pos, next_slot)
+                    pos = new_pos
+                    sent += 1
                     show_status("SENT: {}".format(sent))
-                    print("Upload complete; records:", sent)
-                    return None, sent
-                new_pos = f.tell()
-                if not line.endswith(b"\n"):
-                    raise ValueError("Incomplete JSONL record at {}".format(pos))
-                record = ujson.loads(line.decode('utf-8'))
-                if not isinstance(record, dict) or not record.get("device"):
-                    raise ValueError("Invalid JSONL record at {}".format(pos))
-                # Preserve sender identity and unchanged original record.
-                topic = "{}/{}/location".format(
-                    MQTT_TOPIC_PREFIX, record["device"])
-                client.publish(topic, line.decode("utf-8").strip())
-                next_slot = _commit_cursor(new_pos, next_slot)
-                pos = new_pos
-                sent += 1
-                show_status("SENT: {}".format(sent))
-                if sent % 20 == 0:
-                    print("MQTT uploaded:", sent, "cursor:", pos)
+                    if sent % 20 == 0:
+                        print("MQTT uploaded:", sent, "file:", file_id,
+                              "cursor:", pos)
+        show_status("SENT: {}".format(sent))
+        print("Upload complete; records:", sent)
+        return None, sent
     finally:
         client.close()
 
