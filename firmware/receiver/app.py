@@ -341,6 +341,9 @@ def _archive_ids():
 
 
 def _queue_files():
+    # Ensure the active file exists, including recovery after interrupted rotation.
+    with open(QUEUE_PATH, "a") as out:
+        pass
     # Archived files are immutable; pending.jsonl is always the newest file.
     files = []
     for file_id in _archive_ids():
