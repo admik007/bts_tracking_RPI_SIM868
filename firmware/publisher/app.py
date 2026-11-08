@@ -6,6 +6,7 @@ No local queue yet: measurements stay visible on USB serial on a network failure
 """
 import machine
 import time
+import random
 import ujson
 import ubinascii
 import network
@@ -20,6 +21,9 @@ RECEIVER_PORT = 5000
 WIFI_RETRY_MS = 20000
 WIFI_CONNECT_MS = 7000
 TCP_TIMEOUT_S = 3
+RESTART_INTERVAL_MS = 60 * 60 * 1000
+SEND_DELAY_MIN_MS = 5000
+SEND_DELAY_MAX_MS = 12000
 
 
 def connect_receiver(wlan):
@@ -72,6 +76,7 @@ def run():
     led = machine.Pin("LED", machine.Pin.OUT)
     wlan = network.WLAN(network.STA_IF)
     sim = SIM868()
+    boot_started = time.ticks_ms()
     print("BTS TRACKING publisher, Pico:", DEVICE_ID)
     # The SIM868 measurement loop must still function without the receiver.
     if not sim.start():
@@ -95,6 +100,13 @@ def run():
             record.update(cell)
             record.update(gps)
             print("BTS_JSON:" + ujson.dumps(record))
+
+            if wlan.isconnected():
+                send_delay = random.randint(
+                    SEND_DELAY_MIN_MS, SEND_DELAY_MAX_MS)
+                print("Receiver send delay: %d ms" % send_delay)
+                time.sleep_ms(send_delay)
+
             if send_record(wlan, record):
                 print("Receiver ACK: OK")
             else:
@@ -104,6 +116,16 @@ def run():
                 print("SIM868 reinit unsuccessful")
         except Exception as exc:
             print("Measurement error:", exc)
+
         elapsed = time.ticks_diff(time.ticks_ms(), started)
+        restart_remaining = RESTART_INTERVAL_MS - time.ticks_diff(
+            time.ticks_ms(), boot_started)
+        if restart_remaining <= 0:
+            print("Hourly restart: resetting Pico")
+            machine.reset()
+
         if elapsed < interval_ms:
-            time.sleep_ms(interval_ms - elapsed)
+            time.sleep_ms(min(interval_ms - elapsed, restart_remaining))
+        if time.ticks_diff(time.ticks_ms(), boot_started) >= RESTART_INTERVAL_MS:
+            print("Hourly restart: resetting Pico")
+            machine.reset()
