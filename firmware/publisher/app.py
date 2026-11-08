@@ -89,10 +89,8 @@ def run():
                 next_wifi_attempt = time.ticks_add(time.ticks_ms(), WIFI_RETRY_MS)
 
             cell = sim.cell()
-            # GPS is supplied centrally by the receiver's L76 module.
-            gps = {"gps_valid": False, "time": None, "lat": None,
-                   "lon": None, "alt": None, "speed_kmh": None,
-                   "course": None, "sat": None}
+            # Each sender may provide the shared GPS master fix when available.
+            gps = sim.gnss()
             record = {"device": DEVICE_ID, "source": "bts_pico_sim868"}
             record.update(cell)
             record.update(gps)
