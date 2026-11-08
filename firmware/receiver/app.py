@@ -414,7 +414,7 @@ def _load_cursor():
 def _commit_cursor(file_id, pos, next_slot):
     # Two alternating slots: a torn write leaves the previous slot intact.
     with open(next_slot, "w") as f:
-        f.write("{}:{}:{:08x}\\n".format(
+        f.write("{}:{}:{:08x}\n".format(
             file_id, pos, _cursor_checksum(file_id, pos)))
         f.flush()
     return POS_SLOT_B if next_slot == POS_SLOT_A else POS_SLOT_A
@@ -508,7 +508,7 @@ def _upload_pending(sta):
                     if not line:
                         break
                     new_pos = f.tell()
-                    if not line.endswith(b"\\n"):
+                    if not line.endswith(b"\n"):
                         raise ValueError("Incomplete JSONL record at {}:{}".format(
                             file_id, pos))
                     record = ujson.loads(line.decode('utf-8'))
