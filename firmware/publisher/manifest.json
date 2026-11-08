@@ -1,7 +1,7 @@
 {
-  "version": "11-hourly-restart-random-send-delay",
+  "version": "12-hardware-wdt-7500ms",
   "files": {
-    "app.py": "5241f435d1a4d080b49d0a9024fffba4efe7d79a8ae2442620cd558c7c08233f",
-    "sim868.py": "718522e4ed08bcd2ff2f1670ada9616f579997bcebfac186ac5f14cda3c83948"
+    "app.py": "d84c08e1fa6a0da2ef45e353653ad5fbe1a5524857adec81cd3cdef157912da1",
+    "sim868.py": "c8685e0ed70295053c985fe64624548e0a86203bde536ea573ac424243892b22"
   }
 }
