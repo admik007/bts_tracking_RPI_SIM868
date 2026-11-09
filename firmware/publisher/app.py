@@ -39,61 +39,81 @@ SEND_DELAY_MAX_MS = 12000
 
 
 def connect_receiver(wlan, wdt):
-    # Force a clean STA reinitialization after the OTA infrastructure Wi-Fi.
-    # Merely calling disconnect() can leave the old DHCP configuration active.
+    # Fully disconnect from the infrastructure AP before joining the receiver.
     print("Switching Wi-Fi to receiver AP:", RECEIVER_SSID)
     try:
         try:
             wlan.disconnect()
         except OSError:
             pass
+
+        # disconnect() is asynchronous on RP2: wait for the old link to drop.
+        start = time.ticks_ms()
+        while wlan.isconnected() and time.ticks_diff(time.ticks_ms(), start) < 5000:
+            wdt.feed()
+            time.sleep_ms(100)
+
         wlan.active(False)
-        sleep_with_wdt(wdt, 1000)
+        sleep_with_wdt(wdt, 1500)
         wlan.active(True)
         sleep_with_wdt(wdt, 500)
 
         for attempt in range(2):
-            try:
-                wlan.connect(RECEIVER_SSID)
+            # Do not let connect() silently keep using the previous AP.
+            # Scan and connect to the receiver by its exact BSSID.
+            wdt.feed()
+            aps = wlan.scan()
+            receiver_aps = []
+            for ap in aps:
+                try:
+                    ssid = ap[0].decode("utf-8")
+                except AttributeError:
+                    ssid = ap[0]
+                if ssid == RECEIVER_SSID:
+                    receiver_aps.append(ap)
+
+            if not receiver_aps:
+                print("Receiver AP not found in Wi-Fi scan")
+            else:
+                # Prefer the strongest receiver AP if more than one is visible.
+                target = max(receiver_aps, key=lambda item: item[3])
+                bssid = target[1]
+                print("Receiver AP found: BSSID=%s RSSI=%s channel=%s" % (
+                    ubinascii.hexlify(bssid).decode(), target[3], target[2]))
+                wlan.connect(RECEIVER_SSID, bssid=bssid)
+
                 start = time.ticks_ms()
                 while time.ticks_diff(time.ticks_ms(), start) < WIFI_CONNECT_MS:
                     wdt.feed()
                     if wlan.isconnected():
                         ip_config = wlan.ifconfig()
                         ip = ip_config[0]
-                        # Receiver AP uses 192.168.4.0/24. Do not accept a
-                        # stale address from the infrastructure Wi-Fi.
                         if ip.startswith("192.168.4.") and ip != "192.168.4.1":
                             print("Receiver Wi-Fi connected:", ip_config)
                             return True
-                        print("Unexpected receiver Wi-Fi IP:", ip_config)
+                        print("Connected but IP is not from receiver AP:", ip_config)
                         break
                     time.sleep_ms(200)
-                try:
-                    wlan.disconnect()
-                except OSError:
-                    pass
-                if attempt == 0:
-                    wlan.active(False)
-                    sleep_with_wdt(wdt, 500)
-                    wlan.active(True)
-                    sleep_with_wdt(wdt, 500)
-            except OSError as exc:
-                print("Receiver Wi-Fi error:", exc)
-                if attempt == 0:
-                    try:
-                        wlan.active(False)
-                        sleep_with_wdt(wdt, 500)
-                        wlan.active(True)
-                        sleep_with_wdt(wdt, 500)
-                    except OSError:
-                        pass
+
+            try:
+                wlan.disconnect()
+            except OSError:
+                pass
+            start = time.ticks_ms()
+            while wlan.isconnected() and time.ticks_diff(time.ticks_ms(), start) < 3000:
+                wdt.feed()
+                time.sleep_ms(100)
+            if attempt == 0:
+                wlan.active(False)
+                sleep_with_wdt(wdt, 1000)
+                wlan.active(True)
+                sleep_with_wdt(wdt, 500)
+
     except OSError as exc:
         print("Receiver Wi-Fi setup error:", exc)
 
     print("Receiver AP unavailable or invalid DHCP address; measurements continue locally")
     return False
-
 
 def send_record(wlan, record, wdt):
     if not wlan.isconnected():
