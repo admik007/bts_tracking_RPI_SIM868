@@ -122,8 +122,20 @@ def connect_receiver(wlan, wdt):
     print("Receiver AP unavailable or invalid DHCP address; measurements continue locally")
     return False
 
-def send_record(wlan, record, wdt):
+def receiver_wifi_ready(wlan):
+    """Return True only when associated and holding a usable receiver-AP DHCP lease."""
     if not wlan.isconnected():
+        return False
+    try:
+        ip = wlan.ifconfig()[0]
+    except OSError:
+        return False
+    return ip.startswith("192.168.4.") and ip != "192.168.4.1"
+
+
+def send_record(wlan, record, wdt):
+    if not receiver_wifi_ready(wlan):
+        print("Receiver Wi-Fi not ready; current config:", wlan.ifconfig())
         return False
     sock = None
     try:
@@ -174,16 +186,25 @@ def run():
         modem_error()
 
     # Switch from the OTA infrastructure Wi-Fi to the receiver AP explicitly.
-    connect_receiver(wlan, wdt)
+    wifi_ready = connect_receiver(wlan, wdt)
+    last_wifi_ready = wifi_ready
     next_wifi_attempt = time.ticks_add(time.ticks_ms(), WIFI_RETRY_MS)
     interval_ms = max(1000, int(config.SAMPLE_SECONDS * 1000))
     while True:
         started = time.ticks_ms()
         try:
             wdt.feed()
-            if not wlan.isconnected() and time.ticks_diff(started, next_wifi_attempt) >= 0:
-                connect_receiver(wlan, wdt)
+            wifi_ready = receiver_wifi_ready(wlan)
+            # If the link drops or DHCP loses its lease (for example 0.0.0.0),
+            # recover immediately once. Further retries are rate-limited.
+            if not wifi_ready and (
+                    last_wifi_ready or
+                    time.ticks_diff(started, next_wifi_attempt) >= 0):
+                print("Receiver Wi-Fi invalid; reconnecting. connected=%s ifconfig=%s" % (
+                    wlan.isconnected(), wlan.ifconfig()))
+                wifi_ready = connect_receiver(wlan, wdt)
                 next_wifi_attempt = time.ticks_add(time.ticks_ms(), WIFI_RETRY_MS)
+            last_wifi_ready = wifi_ready
 
             cell = sim.cell()
             # Each sender may provide the shared GPS master fix when available.
@@ -193,13 +214,13 @@ def run():
             record.update(gps)
             print("BTS_JSON:" + ujson.dumps(record))
 
-            if wlan.isconnected():
+            if receiver_wifi_ready(wlan):
                 send_delay = random.randint(
                     SEND_DELAY_MIN_MS, SEND_DELAY_MAX_MS)
                 print("Receiver send delay: %d ms" % send_delay)
                 sleep_with_wdt(wdt, send_delay)
 
-            if wlan.isconnected():
+            if receiver_wifi_ready(wlan):
                 # LED is on only while the TCP record is being transmitted.
                 led.value(1)
                 try:
