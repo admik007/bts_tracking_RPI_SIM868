@@ -4,25 +4,41 @@ from machine import UART, Pin
 import config
 
 class SIM868:
-    def __init__(self):
+    def __init__(self, wdt=None):
+        self.wdt = wdt
         # Match the UART constructor used by the verified working Pico script.
         # RP2040 UART0 default pins are GP0 TX / GP1 RX.
         self.uart = UART(config.MODEM_UART, config.MODEM_BAUD)
 
+    def _feed_wdt(self):
+        if self.wdt is not None:
+            self.wdt.feed()
+
+    def _sleep_ms(self, duration_ms):
+        remaining = int(duration_ms)
+        while remaining > 0:
+            self._feed_wdt()
+            chunk = min(1000, remaining)
+            time.sleep_ms(chunk)
+            remaining -= chunk
+        self._feed_wdt()
+
     def command(self, cmd, timeout_ms=2000):
         while self.uart.any():
+            self._feed_wdt()
             self.uart.read()
         self.uart.write((cmd + "\r\n").encode())
         start = time.ticks_ms()
         buf = bytearray()
         while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            self._feed_wdt()
             if self.uart.any():
                 chunk = self.uart.read()
                 if chunk:
                     buf.extend(chunk)
                     if b"\r\nOK\r\n" in buf or b"\r\nERROR\r\n" in buf:
                         break
-            time.sleep_ms(20)
+            self._sleep_ms(20)
         return bytes(buf).decode("utf-8", "ignore")
 
     def start(self):
@@ -34,12 +50,12 @@ class SIM868:
                                  Pin.OUT, value=0)
             print("SIM868 power: LOW (1s)")
             self.power_pin.value(0)
-            time.sleep(1)
+            self._sleep_ms(1000)
             print("SIM868 power: HIGH")
             self.power_pin.value(1)
             self._power_initialized = True
             print("SIM868 GSM startup: waiting 12s")
-            time.sleep(12)
+            self._sleep_ms(12000)
 
         for attempt in range(8):
             response = self.command("AT", 2000)
@@ -47,7 +63,7 @@ class SIM868:
                 print("SIM868 AT OK")
                 return self.initialize()
             print("SIM868 AT retry", attempt + 1, repr(response))
-            time.sleep(1)
+            self._sleep_ms(1000)
         return False
 
     def initialize(self):
