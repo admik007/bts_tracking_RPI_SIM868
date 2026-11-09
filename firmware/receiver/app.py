@@ -165,6 +165,37 @@ def gps_cache_is_fresh():
     return 0 <= age <= GPS_CACHE_MAX_AGE_MS
 
 
+
+
+SENDER_ROW_TIMEOUT_MS = 60000
+
+
+def _display_operator(record):
+    """Build a safe MCC/MNC label; never render Python None as text."""
+    mcc = record.get("mcc")
+    mnc = record.get("mnc")
+    parts = []
+    for value in (mcc, mnc):
+        if value is not None:
+            value = str(value).strip()
+            if value and value != "None":
+                parts.append(value)
+    return "".join(parts) if parts else "-"
+
+
+def expire_sender_rows():
+    """Remove sender LCD rows after 60 seconds without a received record."""
+    now = time.ticks_ms()
+    for device in list(sender_cells.keys()):
+        cells = sender_cells.get(device)
+        if cells is None or len(cells) < 3:
+            continue
+        age = time.ticks_diff(now, cells[2])
+        if age > SENDER_ROW_TIMEOUT_MS:
+            del sender_cells[device]
+            print("LCD sender expired after 60s:", device)
+
+
 def apply_gps_fallback(record):
     """Any sender with a live fix becomes master; other senders reuse it."""
     global gps_cache
@@ -270,7 +301,8 @@ def handle_client(client, address):
                 if save_record(record):
                     device = record.get("device")
                     if device in sender_cells or len(sender_cells) < MAX_LCD_SENDERS:
-                        operator = str(record.get("mcc", "")) + str(record.get("mnc", ""))
+                        expire_sender_rows()
+                        operator = _display_operator(record)
                         cellid = str(record.get("cellid", "-"))
                         old = sender_cells.get(device)
                         previous = "-"
@@ -598,6 +630,7 @@ def run():
         # a disconnected sender would stay green indefinitely.
         if (mode == "RECEIVING" and
                 time.ticks_diff(time.ticks_ms(), last_lcd_refresh) >= 1000):
+            expire_sender_rows()
             show_status("RECEIVING")
             last_lcd_refresh = time.ticks_ms()
         # Detect key-down edge, with release before the same key triggers again.
