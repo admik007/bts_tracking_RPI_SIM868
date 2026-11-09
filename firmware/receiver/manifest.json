@@ -1,7 +1,7 @@
 {
-  "version": "receiver-lcd-null-mnc-60s-expiry-v2",
+  "version": "receiver-hide-missing-mcc-mnc-v1",
   "files": {
-    "app.py": "7598304962b40e4b2d46590bb7399d11323a7b751273839e8aeb6dda4adefe04",
+    "app.py": "a088365385cb36f9e9ac702e62d28cb764b64b1c3fb624ebf545cd9ee6053d50",
     "lcd.py": "66608e26d441fafff07213987c17360e02f17b160c8d5ff5c5691a5f62b4bd0e",
     "sdcard.py": "78ffa5097bff36855dc78ff0a374cbee4345e2e8f19be040d3bcf5731ac9b409",
     "mqtt_upload.py": "c228c378fe7a3c49c49c2bfc2de1777797b22df9013ed09e73df7921ca34fed3"
