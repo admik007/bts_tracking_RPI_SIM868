@@ -1,7 +1,7 @@
 {
-  "version": "13-wifi-switch-dhcp-reset",
+  "version": "14-wifi-bssid-reconnect",
   "files": {
-    "app.py": "982fad149fcec4746634b6d05888ee59fdb729f373643b556699aa7a50950ee2",
+    "app.py": "ed0d86cfd1237c57ea74fe4e6520508abaef934480bed7e72fb1106c449c9d32",
     "sim868.py": "ecc2217790350ddb974dc0a32bd3949ba752b884bb95ef9b631a94956b6b6a23"
   }
 }
