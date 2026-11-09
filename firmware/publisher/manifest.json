@@ -1,7 +1,7 @@
 {
-  "version": "15-wifi-dhcp-diagnostics",
+  "version": "16-wifi-dhcp-recovery",
   "files": {
-    "app.py": "df0efcc290ce04750e46173055d51ab17708f0989050a10f118f7588d91abf0a",
+    "app.py": "4b486081faf234e0849208668c7cccd8164498ae070e9a8766275bf054dbff94",
     "sim868.py": "ecc2217790350ddb974dc0a32bd3949ba752b884bb95ef9b631a94956b6b6a23"
   }
 }
