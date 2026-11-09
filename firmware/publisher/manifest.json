@@ -1,7 +1,7 @@
 {
-  "version": "12-wdt-8s-chunked-waits",
+  "version": "13-wifi-switch-dhcp-reset",
   "files": {
-    "app.py": "4dbe3680fa39d9900eab49cb0e520ba7348c235bdba30b2f4b69ea63e867cf6b",
+    "app.py": "5badf50329de67e62728017b53dbcea6c2ea8d51fd148534f33b9ca333131322",
     "sim868.py": "ecc2217790350ddb974dc0a32bd3949ba752b884bb95ef9b631a94956b6b6a23"
   }
 }
