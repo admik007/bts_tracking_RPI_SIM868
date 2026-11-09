@@ -1,7 +1,7 @@
 {
   "version": "15-wifi-dhcp-diagnostics",
   "files": {
-    "app.py": "f5e779f98905678f2b07bab16cd70591908ccf1bd208e0f34fd5cabb20bfb419",
+    "app.py": "df0efcc290ce04750e46173055d51ab17708f0989050a10f118f7588d91abf0a",
     "sim868.py": "ecc2217790350ddb974dc0a32bd3949ba752b884bb95ef9b631a94956b6b6a23"
   }
 }
