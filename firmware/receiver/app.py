@@ -300,8 +300,8 @@ def handle_client(client, address):
                     continue
                 if save_record(record):
                     device = record.get("device")
+                    expire_sender_rows()
                     if device in sender_cells or len(sender_cells) < MAX_LCD_SENDERS:
-                        expire_sender_rows()
                         operator = _display_operator(record)
                         cellid = str(record.get("cellid", "-"))
                         old = sender_cells.get(device)
