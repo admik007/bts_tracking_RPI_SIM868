@@ -1,7 +1,7 @@
 {
-  "version": "11-hourly-restart-random-send-delay",
+  "version": "12-wdt-8s-chunked-waits",
   "files": {
-    "app.py": "5241f435d1a4d080b49d0a9024fffba4efe7d79a8ae2442620cd558c7c08233f",
-    "sim868.py": "718522e4ed08bcd2ff2f1670ada9616f579997bcebfac186ac5f14cda3c83948"
+    "app.py": "4dbe3680fa39d9900eab49cb0e520ba7348c235bdba30b2f4b69ea63e867cf6b",
+    "sim868.py": "ecc2217790350ddb974dc0a32bd3949ba752b884bb95ef9b631a94956b6b6a23"
   }
 }
