@@ -81,18 +81,25 @@ def connect_receiver(wlan, wdt):
                 print("Receiver AP found: BSSID=%s RSSI=%s channel=%s" % (
                     ubinascii.hexlify(bssid).decode(), target[3], target[2]))
                 wlan.connect(RECEIVER_SSID, bssid=bssid)
+                print("Wi-Fi status immediately after connect:", wlan.status())
+                print("Wi-Fi config immediately after connect:", wlan.ifconfig())
 
                 start = time.ticks_ms()
+                next_status_log = start
                 while time.ticks_diff(time.ticks_ms(), start) < WIFI_CONNECT_MS:
                     wdt.feed()
-                    if wlan.isconnected():
-                        ip_config = wlan.ifconfig()
-                        ip = ip_config[0]
-                        if ip.startswith("192.168.4.") and ip != "192.168.4.1":
-                            print("Receiver Wi-Fi connected:", ip_config)
-                            return True
-                        print("Connected but IP is not from receiver AP:", ip_config)
-                        break
+                    connected = wlan.isconnected()
+                    ip_config = wlan.ifconfig()
+                    ip = ip_config[0]
+                    if connected and ip.startswith("192.168.4.") and ip != "192.168.4.1":
+                        print("Receiver Wi-Fi connected:", ip_config)
+                        return True
+
+                    # Keep waiting after association: DHCP may still be in progress.
+                    if time.ticks_diff(time.ticks_ms(), next_status_log) >= 0:
+                        print("Receiver Wi-Fi diagnostic: connected=%s status=%s ifconfig=%s" % (
+                            connected, wlan.status(), ip_config))
+                        next_status_log = time.ticks_add(time.ticks_ms(), 1000)
                     time.sleep_ms(200)
 
             try:
