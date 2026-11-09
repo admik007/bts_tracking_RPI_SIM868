@@ -1,7 +1,7 @@
 {
   "version": "13-wifi-switch-dhcp-reset",
   "files": {
-    "app.py": "5badf50329de67e62728017b53dbcea6c2ea8d51fd148534f33b9ca333131322",
+    "app.py": "982fad149fcec4746634b6d05888ee59fdb729f373643b556699aa7a50950ee2",
     "sim868.py": "ecc2217790350ddb974dc0a32bd3949ba752b884bb95ef9b631a94956b6b6a23"
   }
 }
