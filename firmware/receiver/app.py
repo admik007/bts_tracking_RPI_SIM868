@@ -501,8 +501,10 @@ def _connect_home_wifi():
     sta.active(True)
     time.sleep(2)
 
-    for attempt in range(2):
-        print("Home Wi-Fi attempt", attempt + 1)
+    # A connected STA can still have no DHCP route immediately after the
+    # AP -> STA transition. Accept it only after IP, gateway and DNS are valid.
+    for attempt in range(1, 4):
+        print("Home Wi-Fi attempt {}/3".format(attempt))
 
         try:
             sta.connect(config_wifi.SSID, config_wifi.PASS)
@@ -511,27 +513,34 @@ def _connect_home_wifi():
 
         start = time.ticks_ms()
 
-        while time.ticks_diff(time.ticks_ms(), start) < 10000:
+        while time.ticks_diff(time.ticks_ms(), start) < 5000:
             action = _request_during_upload()
             if action:
                 return sta, action
 
             if sta.isconnected():
                 config = sta.ifconfig()
-
-                if config[0] != "0.0.0.0":
+                if (config[0] != "0.0.0.0" and
+                        config[2] != "0.0.0.0" and
+                        config[3] != "0.0.0.0"):
                     print("Home Wi-Fi connected:", config[0])
                     print("Home Wi-Fi config:", config)
                     return sta, None
 
             time.sleep_ms(100)
 
+        print("Home Wi-Fi attempt {}/3 timed out; config: {}".format(
+            attempt, sta.ifconfig()))
+
         try:
             sta.disconnect()
         except OSError:
             pass
 
-    raise OSError("Home Wi-Fi unavailable")
+        if attempt < 3:
+            time.sleep_ms(500)
+
+    raise OSError("Home Wi-Fi DHCP configuration unavailable after 3 attempts")
 
 
 def _disconnect_home_wifi(sta):
