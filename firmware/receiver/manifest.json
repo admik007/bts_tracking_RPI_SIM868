@@ -1,7 +1,7 @@
 {
-  "version": "receiver-wifi-dhcp-3x5s-v1",
+  "version": "receiver-ap-free-upload-reboot-v1",
   "files": {
-    "app.py": "3ae0f50f9ca7e73afba985f5ed49284a95c12fdf7d867cb8d6a102d682925cde",
+    "app.py": "1ae12c2592a0584f8aba4929ba2fba7028f58f86a01fca520f5231decf9e6d11",
     "lcd.py": "66608e26d441fafff07213987c17360e02f17b160c8d5ff5c5691a5f62b4bd0e",
     "sdcard.py": "78ffa5097bff36855dc78ff0a374cbee4345e2e8f19be040d3bcf5731ac9b409",
     "mqtt_upload.py": "c228c378fe7a3c49c49c2bfc2de1777797b22df9013ed09e73df7921ca34fed3"
