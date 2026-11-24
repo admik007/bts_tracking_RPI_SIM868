@@ -30,6 +30,7 @@ SD_MOUNT = "/sd"
 QUEUE_PATH = "/sd/pending.jsonl"
 POS_SLOT_A = "/sd/bts.pos.a"
 POS_SLOT_B = "/sd/bts.pos.b"
+UPLOAD_FLAG_PATH = "/sd/upload.once"
 MQTT_TOPIC_PREFIX = getattr(config_wifi, "BTS_MQTT_TOPIC_PREFIX", "bts")
 MQTT_HOST = getattr(config_wifi, "MQTT_HOST", None)
 MQTT_PORT = getattr(config_wifi, "MQTT_PORT", 1883)
@@ -479,64 +480,82 @@ def _stop_access_point(ap, server):
     print("Receiver TCP server stopped; AP still active")
 
 
+def _upload_flag_exists():
+    try:
+        os.stat(UPLOAD_FLAG_PATH)
+        return True
+    except OSError:
+        return False
+
+
+def _write_upload_flag():
+    # Separate from the JSONL queue and its resume cursor.
+    with open(UPLOAD_FLAG_PATH, "w") as f:
+        f.write("upload\n")
+        f.flush()
+
+
+def _clear_upload_flag():
+    try:
+        os.remove(UPLOAD_FLAG_PATH)
+    except OSError:
+        pass
+
+
 def _connect_home_wifi():
     ap = network.WLAN(network.AP_IF)
     sta = network.WLAN(network.STA_IF)
 
-    print("Resetting Wi-Fi interfaces...")
-
+    # Upload mode is entered after reboot, before start_ap() is called.
+    # Preserve the boot-time STA state instead of cycling the interface off/on.
     try:
         ap.active(False)
     except OSError:
         pass
 
-    try:
-        sta.disconnect()
-    except OSError:
-        pass
+    if not sta.active():
+        sta.active(True)
+        time.sleep(1)
 
-    sta.active(False)
-    time.sleep(2)
+    def _valid_config():
+        if not sta.isconnected():
+            return False
+        cfg = sta.ifconfig()
+        return (cfg[0] != "0.0.0.0" and
+                cfg[2] != "0.0.0.0" and
+                cfg[3] != "0.0.0.0")
 
-    sta.active(True)
-    time.sleep(2)
+    if _valid_config():
+        cfg = sta.ifconfig()
+        print("Home Wi-Fi already connected:", cfg[0])
+        print("Home Wi-Fi config:", cfg)
+        return sta, None
 
-    # A connected STA can still have no DHCP route immediately after the
-    # AP -> STA transition. Accept it only after IP, gateway and DNS are valid.
     for attempt in range(1, 4):
         print("Home Wi-Fi attempt {}/3".format(attempt))
-
         try:
             sta.connect(config_wifi.SSID, config_wifi.PASS)
         except OSError as exc:
             print("Wi-Fi connect error:", exc)
 
         start = time.ticks_ms()
-
-        while time.ticks_diff(time.ticks_ms(), start) < 5000:
+        while time.ticks_diff(time.ticks_ms(), start) < 10000:
             action = _request_during_upload()
             if action:
                 return sta, action
-
-            if sta.isconnected():
-                config = sta.ifconfig()
-                if (config[0] != "0.0.0.0" and
-                        config[2] != "0.0.0.0" and
-                        config[3] != "0.0.0.0"):
-                    print("Home Wi-Fi connected:", config[0])
-                    print("Home Wi-Fi config:", config)
-                    return sta, None
-
+            if _valid_config():
+                cfg = sta.ifconfig()
+                print("Home Wi-Fi connected:", cfg[0])
+                print("Home Wi-Fi config:", cfg)
+                return sta, None
             time.sleep_ms(100)
 
         print("Home Wi-Fi attempt {}/3 timed out; config: {}".format(
             attempt, sta.ifconfig()))
-
         try:
             sta.disconnect()
         except OSError:
             pass
-
         if attempt < 3:
             time.sleep_ms(500)
 
@@ -608,6 +627,69 @@ def _upload_pending(sta):
         client.close()
 
 
+def _run_upload_boot_mode(led):
+    """Upload without starting the receiver AP, then reboot to normal mode."""
+    while True:
+        sta = network.WLAN(network.STA_IF)
+        try:
+            sta, action = _connect_home_wifi()
+            if action == "SAFE":
+                _clear_upload_flag()
+                _safe_shutdown(sta=sta)
+                while True:
+                    led.toggle()
+                    time.sleep_ms(500)
+            if action == "RECEIVING":
+                _clear_upload_flag()
+                _disconnect_home_wifi(sta)
+                machine.reset()
+
+            show_status("MQTT UPLOAD")
+            action, sent = _upload_pending(sta)
+
+            if action == "SAFE":
+                _clear_upload_flag()
+                _safe_shutdown(sta=sta)
+                while True:
+                    led.toggle()
+                    time.sleep_ms(500)
+            if action == "RECEIVING":
+                _clear_upload_flag()
+                _disconnect_home_wifi(sta)
+                machine.reset()
+
+            print("Upload mode complete; records:", sent)
+            _clear_upload_flag()
+            _disconnect_home_wifi(sta)
+            print("Restarting receiver in normal AP mode...")
+            time.sleep_ms(1000)
+            machine.reset()
+        except Exception as exc:
+            print("Upload error:", exc)
+            show_status("UPLOAD ERROR")
+
+        # AP remains disabled after an error. KEY0 retries, KEY2 cancels,
+        # and KEY3 safely powers down.
+        while True:
+            led.toggle()
+            time.sleep_ms(150)
+            if _key_pressed(KEY0):
+                print("KEY0: retry upload")
+                break
+            if _key_pressed(KEY2):
+                print("KEY2: cancel upload and resume receiving")
+                _clear_upload_flag()
+                _disconnect_home_wifi(sta)
+                machine.reset()
+            if _key_pressed(KEY3):
+                print("KEY3: safe power off from upload mode")
+                _clear_upload_flag()
+                _safe_shutdown(sta=sta)
+                while True:
+                    led.toggle()
+                    time.sleep_ms(500)
+
+
 def _safe_shutdown(ap=None, server=None, sta=None):
     global sd_ready
     if server is not None:
@@ -660,6 +742,13 @@ def run():
             lcd = None
             print("LCD init failed:", exc)
     mount_sd()
+
+    # KEY0 writes this marker before rebooting. In this boot path the AP is
+    # never started, so MQTT uses the clean STA connection established at boot.
+    if _upload_flag_exists():
+        print("UPLOAD MODE: marker found; receiver AP remains disabled")
+        _run_upload_boot_mode(led)
+        return
 
     # Diagnose outbound connectivity before start_ap() disables STA.
     print("================================")
@@ -744,38 +833,20 @@ def run():
                             print("KEY2: AP restore failed:", exc)
                             mode = "ERROR"
                             show_status("AP RESTART ERR")
-                elif pressed == "UPLOAD" and mode in ("RECEIVING", "UPLOADING"):
-                    print("KEY0: upload pending MQTT records")
-                    if mode == "RECEIVING":
-                        _stop_access_point(ap, server)
-                        ap, server = None, None
-                    mode = "UPLOADING"
-                    show_status("WIFI CONNECT")
+                elif pressed == "UPLOAD" and mode == "RECEIVING":
+                    print("KEY0: switching to AP-free MQTT upload mode")
                     try:
-                        sta, action = _connect_home_wifi()
-                        if action is None:
-                            show_status("MQTT UPLOAD")
-                            action, sent = _upload_pending(sta)
-                        if action == "SAFE":
-                            if _safe_shutdown(sta=sta):
-                                mode = "SAFE"
-                            else:
-                                mode = "ERROR"
-                        elif action == "RECEIVING":
-                            _disconnect_home_wifi(sta)
-                            sta = None
-                            if not sd_ready and not mount_sd():
-                                mode = "ERROR"
-                                show_status("SD REMOUNT ERR")
-                            else:
-                                ap, server = _open_listener()
-                                mode = "RECEIVING"
-                                print("KEY2: AP and TCP receiving restored")
-                        else:
-                            show_status("UPLOAD DONE")
+                        _write_upload_flag()
+                        _stop_access_point(ap, server)
+                        ap.active(False)
+                        ap, server = None, None
+                        show_status("RESTART UPLOAD")
+                        print("Upload marker saved; rebooting before MQTT upload")
+                        time.sleep_ms(300)
+                        machine.reset()
                     except Exception as exc:
-                        print("Upload error:", exc)
-                        show_status("UPLOAD ERROR")
+                        print("Cannot enter upload mode:", exc)
+                        show_status("UPLOAD MODE ERR")
         last_key = pressed
 
         if mode == "RECEIVING":
