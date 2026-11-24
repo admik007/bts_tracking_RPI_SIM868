@@ -241,7 +241,7 @@ def start_ap():
     ap = network.WLAN(network.AP_IF)
     ap.active(True)
     ap.config(essid=AP_SSID, security=0)
-    ap.ifconfig((AP_IP, "255.255.255.0", AP_IP, "0.0.0.0"))
+    ap.ifconfig((AP_IP, "255.255.255.0", "0.0.0.0", "0.0.0.0"))
     for _ in range(50):
         if ap.active():
             break
@@ -476,34 +476,61 @@ def _stop_access_point(ap, server):
         server.close()
     except OSError:
         pass
-    ap.active(False)
-    print("Receiver AP stopped")
+    print("Receiver TCP server stopped; AP still active")
 
 
 def _connect_home_wifi():
+    ap = network.WLAN(network.AP_IF)
     sta = network.WLAN(network.STA_IF)
+
+    print("Resetting Wi-Fi interfaces...")
+
+    try:
+        ap.active(False)
+    except OSError:
+        pass
+
+    try:
+        sta.disconnect()
+    except OSError:
+        pass
+
+    sta.active(False)
+    time.sleep(2)
+
     sta.active(True)
-    if sta.isconnected():
-        return sta, None
+    time.sleep(2)
+
     for attempt in range(2):
         print("Home Wi-Fi attempt", attempt + 1)
+
         try:
             sta.connect(config_wifi.SSID, config_wifi.PASS)
         except OSError as exc:
             print("Wi-Fi connect error:", exc)
+
         start = time.ticks_ms()
-        while time.ticks_diff(time.ticks_ms(), start) < 7000:
+
+        while time.ticks_diff(time.ticks_ms(), start) < 10000:
             action = _request_during_upload()
             if action:
                 return sta, action
+
             if sta.isconnected():
-                print("Home Wi-Fi connected:", sta.ifconfig()[0])
-                return sta, None
+                config = sta.ifconfig()
+
+                if config[0] != "0.0.0.0":
+                    print("Home Wi-Fi connected:", config[0])
+                    print("Home Wi-Fi config:", config)
+                    return sta, None
+
             time.sleep_ms(100)
+
         try:
             sta.disconnect()
         except OSError:
             pass
+
     raise OSError("Home Wi-Fi unavailable")
 
 
@@ -624,6 +651,39 @@ def run():
             lcd = None
             print("LCD init failed:", exc)
     mount_sd()
+
+    # Diagnose outbound connectivity before start_ap() disables STA.
+    print("================================")
+    print("PRE-AP NETWORK DIAGNOSTICS")
+    print("================================")
+    sta_diag = network.WLAN(network.STA_IF)
+    print("PRE-AP STA active:", sta_diag.active())
+    print("PRE-AP STA connected:", sta_diag.isconnected())
+    try:
+        print("PRE-AP STA config:", sta_diag.ifconfig())
+    except Exception as exc:
+        print("PRE-AP STA config unavailable:", repr(exc))
+
+    for host, port in (
+        ("192.168.254.254", 80),
+        ("1.1.1.1", 443),
+        ("5.75.148.0", 80),
+        ("5.75.148.0", 1883),
+    ):
+        test_socket = socket.socket()
+        test_socket.settimeout(5)
+        try:
+            print("PRE-AP TEST:", host, port)
+            test_socket.connect((host, port))
+            print("PRE-AP OK:", host, port)
+        except Exception as exc:
+            print("PRE-AP FAILED:", repr(exc))
+        finally:
+            test_socket.close()
+
+    print("PRE-AP NETWORK DIAGNOSTICS COMPLETE")
+    print("================================")
+
     ap, server = _open_listener()
     sta = None
     mode = "RECEIVING"
