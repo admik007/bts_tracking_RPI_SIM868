@@ -21,6 +21,7 @@ DEVICE_ID = "".join("{:02x}".format(b) for b in machine.unique_id())
 BASE_URL = "http://" + config_wifi.HOST.rstrip("/") + "/firmware/" + DEVICE_ID + "/"
 PROTECTED = ("main.py", "config.py", "config_wifi.py", "boot.py")
 MAX_FILE_BYTES = 70000
+LOCAL_MANIFEST = "manifest.json"
 
 
 def sha256(data):
@@ -65,6 +66,34 @@ def connect_wifi():
     return False
 
 
+def read_local_version():
+    try:
+        with open(LOCAL_MANIFEST, "r") as f:
+            local_manifest = ujson.loads(f.read())
+        return str(local_manifest["version"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def save_manifest(manifest):
+    # Commit the new version marker only after every firmware file is installed.
+    with open(LOCAL_MANIFEST + ".new", "w") as f:
+        f.write(ujson.dumps(manifest))
+    try:
+        os.remove(LOCAL_MANIFEST + ".bak")
+    except OSError:
+        pass
+    try:
+        os.rename(LOCAL_MANIFEST, LOCAL_MANIFEST + ".bak")
+    except OSError:
+        pass
+    os.rename(LOCAL_MANIFEST + ".new", LOCAL_MANIFEST)
+    try:
+        os.remove(LOCAL_MANIFEST + ".bak")
+    except OSError:
+        pass
+
+
 def update_firmware():
     base = BASE_URL.rstrip("/")
     raw = fetch(base + "/manifest.json")
@@ -80,13 +109,15 @@ def update_firmware():
     if len(files) > 12:
         raise ValueError("too many files")
 
-    try:
-        with open("version.txt", "r") as f:
-            if f.read().strip() == version:
-                print("Firmware current:", version)
-                return
-    except OSError:
-        pass
+    local_version = read_local_version()
+    if local_version == version:
+        print("Firmware current:", version)
+        # Remove obsolete marker left by older bootloader releases.
+        try:
+            os.remove("version.txt")
+        except OSError:
+            pass
+        return
 
     staged = []
     swapped = []
@@ -126,13 +157,14 @@ def update_firmware():
             os.rename(name + ".new", name)
             swapped.append(name)
 
-        with open("version.txt.new", "w") as f:
-            f.write(version)
+        save_manifest(manifest)
+
+        # Remove the obsolete version marker after the JSON manifest is committed.
         try:
             os.remove("version.txt")
         except OSError:
             pass
-        os.rename("version.txt.new", "version.txt")
+
         print("Firmware updated to", version)
 
     except Exception:
@@ -154,6 +186,10 @@ def update_firmware():
                 os.remove(name + ".new")
             except OSError:
                 pass
+        try:
+            os.remove(LOCAL_MANIFEST + ".new")
+        except OSError:
+            pass
         raise
 
 
