@@ -79,19 +79,34 @@ def save_manifest(manifest):
     # Commit the new version marker only after every firmware file is installed.
     with open(LOCAL_MANIFEST + ".new", "w") as f:
         f.write(ujson.dumps(manifest))
+
+    had_old = False
     try:
         os.remove(LOCAL_MANIFEST + ".bak")
     except OSError:
         pass
+
     try:
         os.rename(LOCAL_MANIFEST, LOCAL_MANIFEST + ".bak")
+        had_old = True
     except OSError:
         pass
-    os.rename(LOCAL_MANIFEST + ".new", LOCAL_MANIFEST)
+
     try:
-        os.remove(LOCAL_MANIFEST + ".bak")
-    except OSError:
-        pass
+        os.rename(LOCAL_MANIFEST + ".new", LOCAL_MANIFEST)
+    except Exception:
+        if had_old:
+            try:
+                os.rename(LOCAL_MANIFEST + ".bak", LOCAL_MANIFEST)
+            except OSError:
+                pass
+        raise
+
+    if had_old:
+        try:
+            os.remove(LOCAL_MANIFEST + ".bak")
+        except OSError:
+            pass
 
 
 def update_firmware():
@@ -113,10 +128,11 @@ def update_firmware():
     if local_version == version:
         print("Firmware current:", version)
         # Remove obsolete marker left by older bootloader releases.
-        try:
-            os.remove("version.txt")
-        except OSError:
-            pass
+        for legacy_file in ("version.txt", "manifest.txt"):
+            try:
+                os.remove(legacy_file)
+            except OSError:
+                pass
         return
 
     staged = []
@@ -160,10 +176,11 @@ def update_firmware():
         save_manifest(manifest)
 
         # Remove the obsolete version marker after the JSON manifest is committed.
-        try:
-            os.remove("version.txt")
-        except OSError:
-            pass
+        for legacy_file in ("version.txt", "manifest.txt"):
+            try:
+                os.remove(legacy_file)
+            except OSError:
+                pass
 
         print("Firmware updated to", version)
 
