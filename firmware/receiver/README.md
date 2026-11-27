@@ -1,8 +1,9 @@
 # Receiver – SD queue (phase 2)
 
-The existing `firmware/main.py` is unchanged. It attempts home Wi-Fi and OTA
-at boot, then runs the receiver `app.py`. All receiver files are published by
-the current Apache Alias directly from `firmware/receiver/`.
+The shared `firmware/main.py` bootloader reads home Wi-Fi and OTA settings
+from the receiver's single local `config.py`, then runs the receiver `app.py`.
+All receiver application files are published by the current Apache Alias
+directly from `firmware/receiver/`.
 
 ## Receiver SD card
 
