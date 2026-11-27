@@ -16,16 +16,16 @@ is recommended. No firmware update is triggered when switching modes.
 
 ## MQTT setup
 
-On the **receiver Pico only**, extend local `config_wifi.py` (NOT the
-repository example; the bootloader protects this local config from OTA):
+On the **receiver Pico only**, add the MQTT settings to its local `config.py`
+(NOT the repository example; the bootloader protects this local config from OTA):
 
 ```python
-# Existing OTA home Wi-Fi config stays in place:
+# Common home Wi-Fi / OTA settings:
 SSID = "your-home-ssid"
 PASS = "your-home-wifi-password"
-HOST = "bts.ztk-comp.sk"  # Existing OTA HTTP host, unchanged
+HOST = "bts.ztk-comp.sk"
 
-# New MQTT broker settings (use the broker actually reachable over Wi-Fi):
+# MQTT broker settings (use the broker actually reachable over Wi-Fi):
 MQTT_HOST = "your-mqtt-broker-host"
 MQTT_PORT = 1883
 MQTT_USER = "your-mqtt-username"   # Omit if anonymous broker
