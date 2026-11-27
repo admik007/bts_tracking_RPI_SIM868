@@ -13,7 +13,6 @@ import machine
 import os
 import config
 import sdcard
-import config_wifi
 import mqtt_upload
 
 try:
@@ -22,23 +21,23 @@ except Exception as exc:
     StatusLCD = None
     print('LCD module unavailable:', exc)
 
-AP_SSID = "BTS-TRACKING"
-AP_IP = "192.168.4.1"
-LISTEN_PORT = 5000
+AP_SSID = config.BTS_AP_SSID
+AP_IP = config.BTS_AP_IP
+LISTEN_PORT = config.BTS_TCP_PORT
 MAX_LINE_BYTES = 2048
 SD_MOUNT = "/sd"
 QUEUE_PATH = "/sd/pending.jsonl"
 POS_SLOT_A = "/sd/bts.pos.a"
 POS_SLOT_B = "/sd/bts.pos.b"
 UPLOAD_FLAG_PATH = "/sd/upload.once"
-MQTT_TOPIC_PREFIX = getattr(config_wifi, "BTS_MQTT_TOPIC_PREFIX", "bts")
-MQTT_HOST = getattr(config_wifi, "MQTT_HOST", None)
-MQTT_PORT = getattr(config_wifi, "MQTT_PORT", 1883)
-MQTT_USER = getattr(config_wifi, "MQTT_USER", None)
-MQTT_PASS = getattr(config_wifi, "MQTT_PASS", None)
-KEY0 = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)
-KEY2 = machine.Pin(2, machine.Pin.IN, machine.Pin.PULL_UP)
-KEY3 = machine.Pin(3, machine.Pin.IN, machine.Pin.PULL_UP)
+MQTT_TOPIC_PREFIX = getattr(config, "BTS_MQTT_TOPIC_PREFIX", "bts")
+MQTT_HOST = getattr(config, "MQTT_HOST", None)
+MQTT_PORT = getattr(config, "MQTT_PORT", 1883)
+MQTT_USER = getattr(config, "MQTT_USER", None)
+MQTT_PASS = getattr(config, "MQTT_PASS", None)
+KEY0 = machine.Pin(getattr(config, "KEY0_PIN", 15), machine.Pin.IN, machine.Pin.PULL_UP)
+KEY2 = machine.Pin(getattr(config, "KEY2_PIN", 2), machine.Pin.IN, machine.Pin.PULL_UP)
+KEY3 = machine.Pin(getattr(config, "KEY3_PIN", 3), machine.Pin.IN, machine.Pin.PULL_UP)
 # KEY1 GP17 is the SD-card CS pin: never initialize it as a key.
 
 
@@ -534,7 +533,7 @@ def _connect_home_wifi():
     for attempt in range(1, 4):
         print("Home Wi-Fi attempt {}/3".format(attempt))
         try:
-            sta.connect(config_wifi.SSID, config_wifi.PASS)
+            sta.connect(config.SSID, config.PASS)
         except OSError as exc:
             print("Wi-Fi connect error:", exc)
 
@@ -576,7 +575,7 @@ def _upload_pending(sta):
     if not sd_ready:
         raise OSError("SD unavailable")
     if not MQTT_HOST:
-        raise ValueError("MQTT_HOST missing in local config_wifi.py")
+        raise ValueError("MQTT_HOST missing in local config.py")
     cursor, next_slot = _load_cursor()
     pending_bytes = _pending_bytes(cursor)
     sent = 0

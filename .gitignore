@@ -1,5 +1,4 @@
 firmware/config.py
-firmware/config_wifi.py
 server/web/.htaccess
 server/web/_config.php
 server/web/_admin_config.php

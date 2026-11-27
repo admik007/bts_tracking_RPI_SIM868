@@ -15,9 +15,9 @@ import config
 from sim868 import SIM868
 
 DEVICE_ID = ubinascii.hexlify(machine.unique_id()).decode()
-RECEIVER_SSID = "BTS-TRACKING"
-RECEIVER_IP = "192.168.4.1"
-RECEIVER_PORT = 5000
+RECEIVER_SSID = getattr(config, "BTS_AP_SSID", "BTS-TRACKING")
+RECEIVER_IP = getattr(config, "BTS_AP_IP", "192.168.4.1")
+RECEIVER_PORT = getattr(config, "BTS_TCP_PORT", 5000)
 WIFI_RETRY_MS = 20000
 WIFI_CONNECT_MS = 7000
 TCP_TIMEOUT_S = 3
