@@ -1,8 +1,7 @@
 """Common Pico W bootloader used by all tracker projects.
 
-Standard OTA configuration: config_wifi.py with SSID, PASS and HOST.
-Legacy projects may temporarily expose the same values through config.py.
-The bootloader main.py and local configuration files are never overwritten.
+All local settings (Wi-Fi, OTA and application settings) are stored in config.py.
+The bootloader and local config.py are never overwritten by OTA.
 """
 import os
 import time
@@ -12,14 +11,11 @@ import ujson
 import uhashlib
 import ubinascii
 
-try:
-    import config_wifi
-except ImportError:
-    import config as config_wifi
+import config
 
 DEVICE_ID = "".join("{:02x}".format(b) for b in machine.unique_id())
-BASE_URL = "http://" + config_wifi.HOST.rstrip("/") + "/firmware/" + DEVICE_ID + "/"
-PROTECTED = ("main.py", "config.py", "config_wifi.py", "boot.py")
+BASE_URL = "http://" + config.HOST.rstrip("/") + "/firmware/" + DEVICE_ID + "/"
+PROTECTED = ("main.py", "config.py", "boot.py")
 MAX_FILE_BYTES = 70000
 LOCAL_MANIFEST = "manifest.json"
 
@@ -47,7 +43,7 @@ def connect_wifi():
 
     for attempt in range(2):
         try:
-            wlan.connect(config_wifi.SSID, config_wifi.PASS)
+            wlan.connect(config.SSID, config.PASS)
             start = time.ticks_ms()
             while time.ticks_diff(time.ticks_ms(), start) < 7000:
                 if wlan.isconnected():
