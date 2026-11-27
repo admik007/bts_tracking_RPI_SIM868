@@ -1,5 +1,0 @@
-# Copy to config_wifi.py on each Pico. Do not commit real credentials.
-SSID = "rpi_network"
-PASS = ""
-# Firmware URL: http://HOST/firmware/<machine.unique_id() in hex>/
-HOST = "192.168.10.1"
