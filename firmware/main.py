@@ -15,7 +15,7 @@ import config
 
 DEVICE_ID = "".join("{:02x}".format(b) for b in machine.unique_id())
 BASE_URL = "http://" + config.HOST.rstrip("/") + "/firmware/" + DEVICE_ID + "/"
-PROTECTED = ("main.py", "config.py", "boot.py")
+PROTECTED = ("main.py", "config.py")
 MAX_FILE_BYTES = 70000
 LOCAL_MANIFEST = "manifest.json"
 
