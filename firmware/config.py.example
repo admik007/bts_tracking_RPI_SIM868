@@ -1,0 +1,23 @@
+SSID = ""
+PASS = ""
+HOST = ""
+
+MQTT_USER = ""
+MQTT_PASS = ""
+MQTT_HOST = ""
+MQTT_PORT = 1883
+BTS_MQTT_TOPIC_PREFIX = ""
+
+MODEM_UART = 0
+MODEM_TX = 0
+MODEM_RX = 1
+MODEM_BAUD = 115200
+PULSE_PWRKEY_ON_BOOT = False
+PWRKEY_PIN = 14
+PWRKEY_ACTIVE_LEVEL = 0
+PWRKEY_PULSE_MS = 1200
+SAMPLE_SECONDS = 5
+PWRKEY_PIN = 14
+SAMPLE_SECONDS = 5
+# Optional local MQTT will be implemented after transport decision.
+# In v1 records are printed as JSON to USB serial.
